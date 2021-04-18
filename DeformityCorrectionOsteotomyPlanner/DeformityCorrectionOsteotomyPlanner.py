@@ -2,6 +2,7 @@ import os
 import unittest
 import logging
 import vtk, qt, ctk, slicer
+import numpy as np
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
@@ -17,18 +18,17 @@ class DeformityCorrectionOsteotomyPlanner(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "DeformityCorrectionOsteotomyPlanner"  # TODO: make this more human readable by adding spaces
-    self.parent.categories = ["Examples"]  # TODO: set categories (folders where the module shows up in the module selector)
+    self.parent.categories = ["Planning"]  # TODO: set categories (folders where the module shows up in the module selector)
     self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-    self.parent.contributors = ["John Doe (AnyWare Corp.)"]  # TODO: replace with "Firstname Lastname (Organization)"
+    self.parent.contributors = ["Mauro I. Dominguez (M3Dical)"]  # TODO: replace with "Firstname Lastname (Organization)"
     # TODO: update with short description of the module and a link to online module documentation
     self.parent.helpText = """
-This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#DeformityCorrectionOsteotomyPlanner">module documentation</a>.
+This is a module to to plan deformity correction osteotomies.
+See more information in <a href="https://github.com/mauigna06/SlicerDeformityCorrectionOsteotomyPlanner">module link</a>.
 """
     # TODO: replace with organization, grant and thanks
     self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
+This file was originally developed by Mauro I. Dominguez (M3Dical)
 """
 
     # Additional initialization step after application startup is complete
@@ -131,14 +131,14 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
 
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
-    self.ui.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    self.ui.imageThresholdSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
-    self.ui.invertOutputCheckBox.connect("toggled(bool)", self.updateParameterNodeFromGUI)
-    self.ui.invertedOutputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-
-    # Buttons
-    self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
+    self.ui.boneLinearCurveSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+    self.ui.boneModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+    self.ui.numberOfIterationsOfCreateBoneCenterlineSpinBox.connect("valueChanged(int)", self.updateParameterNodeFromGUI)
+    
+    # Buttons#
+    self.ui.addBoneLinearCurveButton.connect('clicked(bool)',self.onAddBoneLinearCurveButton)
+    self.ui.createBoneCenterlineButton.connect('clicked(bool)',self.onCreateBoneCenterlineButton)
+    self.ui.loadBoneModelButton.connect('clicked(bool)',self.onLoadBoneModelButton)
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
@@ -227,19 +227,10 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     self._updatingGUIFromParameterNode = True
 
     # Update node selectors and sliders
-    self.ui.inputSelector.setCurrentNode(self._parameterNode.GetNodeReference("InputVolume"))
-    self.ui.outputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolume"))
-    self.ui.invertedOutputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolumeInverse"))
-    self.ui.imageThresholdSliderWidget.value = float(self._parameterNode.GetParameter("Threshold"))
-    self.ui.invertOutputCheckBox.checked = (self._parameterNode.GetParameter("Invert") == "true")
-
-    # Update buttons states and tooltips
-    if self._parameterNode.GetNodeReference("InputVolume") and self._parameterNode.GetNodeReference("OutputVolume"):
-      self.ui.applyButton.toolTip = "Compute output volume"
-      self.ui.applyButton.enabled = True
-    else:
-      self.ui.applyButton.toolTip = "Select input and output volume nodes"
-      self.ui.applyButton.enabled = False
+    self.ui.boneLinearCurveSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneLinearCurve"))
+    self.ui.boneModelSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneModel"))
+    if self._parameterNode.GetParameter("numberOfIterationsOfCreateBoneCenterline") != '':
+      self.ui.numberOfIterationsOfCreateBoneCenterlineSpinBox.value = int(self._parameterNode.GetParameter("numberOfIterationsOfCreateBoneCenterline"))
 
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
@@ -255,36 +246,22 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
 
     wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
 
-    self._parameterNode.SetNodeReferenceID("InputVolume", self.ui.inputSelector.currentNodeID)
-    self._parameterNode.SetNodeReferenceID("OutputVolume", self.ui.outputSelector.currentNodeID)
-    self._parameterNode.SetParameter("Threshold", str(self.ui.imageThresholdSliderWidget.value))
-    self._parameterNode.SetParameter("Invert", "true" if self.ui.invertOutputCheckBox.checked else "false")
-    self._parameterNode.SetNodeReferenceID("OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID)
-
+    self._parameterNode.SetNodeReferenceID("boneLinearCurve", self.ui.boneLinearCurveSelector.currentNodeID)
+    self._parameterNode.SetNodeReferenceID("boneModel", self.ui.boneModelSelector.currentNodeID)
+    self._parameterNode.SetParameter("numberOfIterationsOfCreateBoneCenterline", str(self.ui.numberOfIterationsOfCreateBoneCenterlineSpinBox.value))
+    
     self._parameterNode.EndModify(wasModified)
 
-  def onApplyButton(self):
-    """
-    Run processing when user clicks "Apply" button.
-    """
-    try:
+  def onAddBoneLinearCurveButton(self):
+    self.logic.addBoneLinearCurve()
 
-      # Compute output
-      self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(),
-        self.ui.imageThresholdSliderWidget.value, self.ui.invertOutputCheckBox.checked)
+  def onCreateBoneCenterlineButton(self):
+    self.logic.createBoneCenterline()
 
-      # Compute inverted output (if needed)
-      if self.ui.invertedOutputSelector.currentNode():
-        # If additional output volume is selected then result with inverted threshold is written there
-        self.logic.process(self.ui.inputSelector.currentNode(), self.ui.invertedOutputSelector.currentNode(),
-          self.ui.imageThresholdSliderWidget.value, not self.ui.invertOutputCheckBox.checked, showResult=False)
-
-    except Exception as e:
-      slicer.util.errorDisplay("Failed to compute results: "+str(e))
-      import traceback
-      traceback.print_exc()
-
-
+  def onLoadBoneModelButton(self):
+    screwPath = os.path.join(os.path.dirname(slicer.modules.deformitycorrectionosteotomyplanner.path), 'Resources/deformedBone.vtk')
+    screwPath = screwPath.replace("\\","/")
+    screwModel = slicer.modules.models.logic().AddModel(screwPath)
 #
 # DeformityCorrectionOsteotomyPlannerLogic
 #
@@ -314,6 +291,201 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     if not parameterNode.GetParameter("Invert"):
       parameterNode.SetParameter("Invert", "false")
 
+  def getParentFolderItemID(self):
+    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    sceneItemID = shNode.GetSceneItemID()
+    folderSubjectHierarchyID = shNode.GetItemByName("DeformityCorrectionOsteotomyPlanner")
+    if folderSubjectHierarchyID:
+      return folderSubjectHierarchyID
+    else:
+      return shNode.CreateFolderItem(sceneItemID,"DeformityCorrectionOsteotomyPlanner")
+  
+  def addBoneLinearCurve(self):
+    linearCurveNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLMarkupsCurveNode")
+    linearCurveNode.SetName("temp")
+    slicer.mrmlScene.AddNode(linearCurveNode)
+    slicer.modules.markups.logic().AddNewDisplayNodeForMarkupsNode(linearCurveNode)
+    linearCurveNode.SetCurveTypeToLinear()
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    linearCurveNodeItemID = shNode.GetItemByDataNode(linearCurveNode)
+    shNode.SetItemParent(linearCurveNodeItemID, self.getParentFolderItemID())
+    linearCurveNode.SetName(slicer.mrmlScene.GetUniqueNameByString("boneLinearCurve"))
+
+    #setup placement
+    slicer.modules.markups.logic().SetActiveListID(linearCurveNode)
+    interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
+    interactionNode.SwitchToSinglePlaceMode()
+
+  def createBoneCenterline(self):
+    import time
+    startTime = time.time()
+    logging.info('Processing started')
+
+    parameterNode = self.getParameterNode()
+    boneLinearCurve = parameterNode.GetNodeReference("boneLinearCurve")
+    boneModel = parameterNode.GetNodeReference("boneModel")
+    boneCenterline = parameterNode.GetNodeReference("boneCenterline")
+    numberOfIterationsOfCreateBoneCenterline = int(parameterNode.GetParameter("numberOfIterationsOfCreateBoneCenterline"))
+    
+    slicer.mrmlScene.RemoveNode(boneCenterline)
+    boneCenterline = self.createStartingCenterline()
+
+    resampleNumberOfPoints = [8,16,32,64,128]
+
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    intersectionsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Intersections")
+
+    for i in range(numberOfIterationsOfCreateBoneCenterline):
+      sampleDist = boneCenterline.GetCurveLengthWorld()/(resampleNumberOfPoints[i] - 1)
+      boneCenterline.ResampleCurveWorld(sampleDist)
+
+      arrayOfPoints = slicer.util.arrayFromMarkupsControlPoints(boneCenterline)
+
+      for j in range(2):
+
+        listOfNewPoints = []
+
+        lineStartPos = arrayOfPoints[0]
+        lineEndPos = arrayOfPoints[1]
+        origin = lineStartPos
+        zDirection = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
+
+        intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection%d' % 0)
+        intersectionModel.CreateDefaultDisplayNodes()
+        self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel, zDirection, origin, intersectionModel)
+        intersectionModelItemID = shNode.GetItemByDataNode(intersectionModel)
+        shNode.SetItemParent(intersectionModelItemID, intersectionsFolder)
+
+        listOfNewPoints.append(self.getCentroid(intersectionModel))
+
+        for i in range(1,len(arrayOfPoints)-1):
+          lineStartPos = arrayOfPoints[i-1]
+          lineEndPos = arrayOfPoints[i+1]
+          origin = arrayOfPoints[i]
+          zDirection = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
+
+          intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection%d' % i)
+          intersectionModel.CreateDefaultDisplayNodes()
+          self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel, zDirection, origin, intersectionModel)
+          intersectionModelItemID = shNode.GetItemByDataNode(intersectionModel)
+          shNode.SetItemParent(intersectionModelItemID, intersectionsFolder)
+
+          listOfNewPoints.append(self.getCentroid(intersectionModel))
+        
+        lineStartPos = arrayOfPoints[-2]
+        lineEndPos = arrayOfPoints[-1]
+        origin = lineEndPos
+        zDirection = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
+
+        intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection%d' % (boneLinearCurve.GetNumberOfControlPoints()-1))
+        intersectionModel.CreateDefaultDisplayNodes()
+        self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel, zDirection, origin, intersectionModel)
+        intersectionModelItemID = shNode.GetItemByDataNode(intersectionModel)
+        shNode.SetItemParent(intersectionModelItemID, intersectionsFolder)
+
+        listOfNewPoints.append(self.getCentroid(intersectionModel))
+
+        arrayOfPoints = np.array(listOfNewPoints)
+
+      slicer.util.updateMarkupsControlPointsFromArray(boneCenterline, arrayOfPoints)
+
+    shNode.RemoveItem(intersectionsFolder)
+
+    stopTime = time.time()
+    logging.info('Processing completed in {0:.2f} seconds\n'.format(stopTime-startTime))
+
+
+  def createStartingCenterline(self):
+    parameterNode = self.getParameterNode()
+    boneModel = parameterNode.GetNodeReference("boneModel")
+    boneLinearCurve = parameterNode.GetNodeReference("boneLinearCurve")
+
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    intersectionsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Intersections")
+
+    boneCenterline = slicer.mrmlScene.CreateNodeByClass("vtkMRMLMarkupsCurveNode")
+    boneCenterline.SetName("temp")
+    slicer.mrmlScene.AddNode(boneCenterline)
+    slicer.modules.markups.logic().AddNewDisplayNodeForMarkupsNode(boneCenterline)
+    boneCenterline.SetCurveTypeToLinear()
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    boneCenterlineItemID = shNode.GetItemByDataNode(boneCenterline)
+    shNode.SetItemParent(boneCenterlineItemID, self.getParentFolderItemID())
+    boneCenterline.SetName(slicer.mrmlScene.GetUniqueNameByString("boneCenterline"))
+    boneCenterline = parameterNode.SetNodeReferenceID("boneCenterline",boneCenterline.GetID())
+
+    listOfPoints = []
+
+    lineStartPos = np.zeros(3)
+    lineEndPos = np.zeros(3)
+    boneLinearCurve.GetNthControlPointPositionWorld(0, lineStartPos)
+    boneLinearCurve.GetNthControlPointPositionWorld(1, lineEndPos)
+    origin = lineStartPos
+    zDirection = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
+
+    intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection%d' % 0)
+    intersectionModel.CreateDefaultDisplayNodes()
+    self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel, zDirection, origin, intersectionModel)
+    intersectionModelItemID = shNode.GetItemByDataNode(intersectionModel)
+    shNode.SetItemParent(intersectionModelItemID, intersectionsFolder)
+
+    listOfPoints.append(self.getCentroid(intersectionModel))
+
+    for i in range(1,boneLinearCurve.GetNumberOfControlPoints()-1):
+      boneLinearCurve.GetNthControlPointPositionWorld(i-1, lineStartPos)
+      boneLinearCurve.GetNthControlPointPositionWorld(i+1, lineEndPos)
+      boneLinearCurve.GetNthControlPointPositionWorld(i, origin)
+      zDirection = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
+
+      intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection%d' % i)
+      intersectionModel.CreateDefaultDisplayNodes()
+      self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel, zDirection, origin, intersectionModel)
+      intersectionModelItemID = shNode.GetItemByDataNode(intersectionModel)
+      shNode.SetItemParent(intersectionModelItemID, intersectionsFolder)
+
+      listOfPoints.append(self.getCentroid(intersectionModel))
+    
+    boneLinearCurve.GetNthControlPointPositionWorld(boneLinearCurve.GetNumberOfControlPoints()-2, lineStartPos)
+    boneLinearCurve.GetNthControlPointPositionWorld(boneLinearCurve.GetNumberOfControlPoints()-1, lineEndPos)
+    origin = lineEndPos
+    zDirection = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
+
+    intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection%d' % (boneLinearCurve.GetNumberOfControlPoints()-1))
+    intersectionModel.CreateDefaultDisplayNodes()
+    self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel, zDirection, origin, intersectionModel)
+    intersectionModelItemID = shNode.GetItemByDataNode(intersectionModel)
+    shNode.SetItemParent(intersectionModelItemID, intersectionsFolder)
+
+    listOfPoints.append(self.getCentroid(intersectionModel))
+
+    shNode.RemoveItem(intersectionsFolder)
+
+    points = vtk.vtkPoints()
+    curvePointsArray = np.array(listOfPoints)
+    vtkPointsData = vtk.util.numpy_support.numpy_to_vtk(curvePointsArray, deep=1)
+    points.SetNumberOfPoints(len(curvePointsArray))
+    points.SetData(vtkPointsData)
+    boneCenterline.SetControlPointPositionsWorld(points)
+
+    return boneCenterline
+
+  def getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(self,modelNode,normal,origin,intersectionModel):
+    plane = vtk.vtkPlane()
+    plane.SetOrigin(origin)
+    plane.SetNormal(normal)
+
+    cutter = vtk.vtkCutter()
+    cutter.SetInputData(modelNode.GetPolyData())
+    cutter.SetCutFunction(plane)
+    cutter.Update()
+
+    intersectionModel.SetAndObservePolyData(cutter.GetOutput())
+  
+  def getCentroid(self,model):
+    pd = model.GetPolyData().GetPoints().GetData()
+    from vtk.util.numpy_support import vtk_to_numpy
+    return np.average(vtk_to_numpy(pd), axis=0)
+  
   def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
     """
     Run the processing algorithm.
