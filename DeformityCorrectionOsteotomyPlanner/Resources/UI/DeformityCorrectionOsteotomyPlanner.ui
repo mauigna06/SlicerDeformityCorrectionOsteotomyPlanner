@@ -300,10 +300,22 @@ tangent of bone curve</string>
          </widget>
         </item>
         <item row="0" column="1">
-         <widget class="qMRMLNodeComboBox" name="boneFiducialListSelector"/>
+         <widget class="qMRMLNodeComboBox" name="boneFiducialListSelector">
+          <property name="nodeTypes">
+           <stringlist>
+            <string>vtkMRMLMarkupsFiducialNode</string>
+           </stringlist>
+          </property>
+         </widget>
         </item>
         <item row="1" column="1">
-         <widget class="qMRMLNodeComboBox" name="boneSurgicalGuideBasesSelector"/>
+         <widget class="qMRMLNodeComboBox" name="boneSurgicalGuideBasesSelector">
+          <property name="nodeTypes">
+           <stringlist>
+            <string>vtkMRMLMarkupsCurveNode</string>
+           </stringlist>
+          </property>
+         </widget>
         </item>
         <item row="2" column="1">
          <widget class="ctkDoubleSpinBox" name="boneScrewHoleCylinderRadiusSpinBox">
@@ -312,6 +324,9 @@ tangent of bone curve</string>
           </property>
           <property name="maximum">
            <double>10.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>0.100000000000000</double>
           </property>
           <property name="value">
            <double>1.500000000000000</double>
@@ -416,6 +431,38 @@ tangent of bone curve</string>
     <hint type="destinationlabel">
      <x>145</x>
      <y>313</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>DeformityCorrectionOsteotomyPlanner</sender>
+   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
+   <receiver>boneFiducialListSelector</receiver>
+   <slot>setMRMLScene(vtkMRMLScene*)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>173</x>
+     <y>438</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>263</x>
+     <y>725</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>DeformityCorrectionOsteotomyPlanner</sender>
+   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
+   <receiver>boneSurgicalGuideBasesSelector</receiver>
+   <slot>setMRMLScene(vtkMRMLScene*)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>173</x>
+     <y>438</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>263</x>
+     <y>751</y>
     </hint>
    </hints>
   </connection>

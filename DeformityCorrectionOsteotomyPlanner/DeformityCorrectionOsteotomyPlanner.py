@@ -131,14 +131,31 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
 
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
-    self.ui.boneLinearCurveSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+    self.ui.boneCurveSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     self.ui.boneModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    self.ui.numberOfIterationsOfCreateBoneCenterlineSpinBox.connect("valueChanged(int)", self.updateParameterNodeFromGUI)
+    self.ui.boneFiducialListSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+    self.ui.boneSurgicalGuideBasesSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     
+    self.ui.normalAsTangentOfCurveCheckBox.connect('stateChanged(int)', self.updateParameterNodeFromGUI)
+    self.ui.originToCurveCheckBox.connect('stateChanged(int)', self.updateParameterNodeFromGUI)
+
+    self.ui.miterBoxSlotWidthSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
+    self.ui.miterBoxSlotLengthSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
+    self.ui.miterBoxSlotHeightSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
+    self.ui.miterBoxSlotWallSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
+    self.ui.biggerMiterBoxDistanceToBoneSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
+    self.ui.boneScrewHoleCylinderRadiusSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
+    #self.ui.clearanceFitPrintingToleranceSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
+
     # Buttons#
-    self.ui.addBoneLinearCurveButton.connect('clicked(bool)',self.onAddBoneLinearCurveButton)
-    self.ui.createBoneCenterlineButton.connect('clicked(bool)',self.onCreateBoneCenterlineButton)
     self.ui.loadBoneModelButton.connect('clicked(bool)',self.onLoadBoneModelButton)
+    self.ui.addBoneCurveButton.connect('clicked(bool)',self.onAddBoneCurveButton)
+    self.ui.addCutPlaneButton.connect('clicked(bool)',self.onAddCutPlaneButton)
+    self.ui.centerBoneCutPlanesButton.connect('clicked(bool)',self.onCenterBoneCutPlanesButton)
+    self.ui.createMiterBoxesFromBoneCutPlanesButton.connect('clicked(bool)',self.onCreateMiterBoxesFromBoneCutPlanesButton)
+    self.ui.createBoneCylindersFiducialListButton.connect('clicked(bool)',self.onCreateBoneCylindersFiducialListButton)
+    self.ui.createCylindersFromFiducialListAndBoneSurgicalGuideBasesButton.connect('clicked(bool)',self.onCreateCylindersFromFiducialListAndBoneSurgicalGuideBasesButton)
+    self.ui.makeBooleanOperationsToBoneSurgicalGuideBasesButton.connect('clicked(bool)',self.onMakeBooleanOperationsToBoneSurgicalGuideBasesButton)
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
@@ -155,6 +172,9 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     """
     # Make sure parameter node exists and observed
     self.initializeParameterNode()
+
+    layoutManager = slicer.app.layoutManager()
+    layoutManager.setLayout(self.logic.customLayoutId)
 
   def exit(self):
     """
@@ -227,10 +247,26 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     self._updatingGUIFromParameterNode = True
 
     # Update node selectors and sliders
-    self.ui.boneLinearCurveSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneLinearCurve"))
     self.ui.boneModelSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneModel"))
-    if self._parameterNode.GetParameter("numberOfIterationsOfCreateBoneCenterline") != '':
-      self.ui.numberOfIterationsOfCreateBoneCenterlineSpinBox.value = int(self._parameterNode.GetParameter("numberOfIterationsOfCreateBoneCenterline"))
+    self.ui.boneCurveSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneCurve"))
+    self.ui.boneFiducialListSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneFiducialList"))
+    self.ui.boneSurgicalGuideBasesSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneSurgicalGuideBases"))
+    
+    if self._parameterNode.GetParameter("miterBoxSlotWidth") != '':
+      self.ui.miterBoxSlotWidthSpinBox.setValue(float(self._parameterNode.GetParameter("miterBoxSlotWidth")))
+    if self._parameterNode.GetParameter("miterBoxSlotLength") != '':
+      self.ui.miterBoxSlotLengthSpinBox.setValue(float(self._parameterNode.GetParameter("miterBoxSlotLength")))
+    if self._parameterNode.GetParameter("miterBoxSlotHeight") != '':
+      self.ui.miterBoxSlotHeightSpinBox.setValue(float(self._parameterNode.GetParameter("miterBoxSlotHeight")))
+    if self._parameterNode.GetParameter("miterBoxSlotWall") != '':
+      self.ui.miterBoxSlotWallSpinBox.setValue(float(self._parameterNode.GetParameter("miterBoxSlotWall")))
+    if self._parameterNode.GetParameter("biggerMiterBoxDistanceToBone") != '':
+      self.ui.biggerMiterBoxDistanceToBoneSpinBox.setValue(float(self._parameterNode.GetParameter("biggerMiterBoxDistanceToBone")))
+    if self._parameterNode.GetParameter("boneScrewHoleCylinderRadius") != '':
+      self.ui.boneScrewHoleCylinderRadiusSpinBox.setValue(float(self._parameterNode.GetParameter("boneScrewHoleCylinderRadius")))
+    
+    self.ui.normalAsTangentOfCurveCheckBox.checked = self._parameterNode.GetParameter("normalAsTangentOfCurve") == "True"
+    self.ui.originToCurveCheckBox.checked = self._parameterNode.GetParameter("originToCurve") == "True"
 
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
@@ -246,22 +282,55 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
 
     wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
 
-    self._parameterNode.SetNodeReferenceID("boneLinearCurve", self.ui.boneLinearCurveSelector.currentNodeID)
+    self._parameterNode.SetNodeReferenceID("boneCurve", self.ui.boneCurveSelector.currentNodeID)
     self._parameterNode.SetNodeReferenceID("boneModel", self.ui.boneModelSelector.currentNodeID)
-    self._parameterNode.SetParameter("numberOfIterationsOfCreateBoneCenterline", str(self.ui.numberOfIterationsOfCreateBoneCenterlineSpinBox.value))
+    self._parameterNode.SetNodeReferenceID("boneFiducialList", self.ui.boneFiducialListSelector.currentNodeID)
+    self._parameterNode.SetNodeReferenceID("boneSurgicalGuideBases", self.ui.boneSurgicalGuideBasesSelector.currentNodeID)
     
+    self._parameterNode.SetParameter("miterBoxSlotWidth", str(self.ui.miterBoxSlotWidthSpinBox.value))
+    self._parameterNode.SetParameter("miterBoxSlotLength", str(self.ui.miterBoxSlotLengthSpinBox.value))
+    self._parameterNode.SetParameter("miterBoxSlotHeight", str(self.ui.miterBoxSlotHeightSpinBox.value))
+    self._parameterNode.SetParameter("miterBoxSlotWall", str(self.ui.miterBoxSlotWallSpinBox.value))
+    self._parameterNode.SetParameter("biggerMiterBoxDistanceToBone", str(self.ui.biggerMiterBoxDistanceToBoneSpinBox.value))
+    self._parameterNode.SetParameter("boneScrewHoleCylinderRadius", str(self.ui.boneScrewHoleCylinderRadiusSpinBox.value))
+
+    if self.ui.normalAsTangentOfCurveCheckBox.checked:
+      self._parameterNode.SetParameter("normalAsTangentOfCurve","True")
+    else:
+      self._parameterNode.SetParameter("normalAsTangentOfCurve","False")
+    if self.ui.originToCurveCheckBox.checked:
+      self._parameterNode.SetParameter("originToCurve","True")
+    else:
+      self._parameterNode.SetParameter("originToCurve","False")
+
     self._parameterNode.EndModify(wasModified)
 
-  def onAddBoneLinearCurveButton(self):
-    self.logic.addBoneLinearCurve()
-
-  def onCreateBoneCenterlineButton(self):
-    self.logic.createBoneCenterline()
+  def onAddBoneCurveButton(self):
+    self.logic.addBoneCurve()
 
   def onLoadBoneModelButton(self):
     screwPath = os.path.join(os.path.dirname(slicer.modules.deformitycorrectionosteotomyplanner.path), 'Resources/deformedBone.vtk')
     screwPath = screwPath.replace("\\","/")
     screwModel = slicer.modules.models.logic().AddModel(screwPath)
+
+  def onAddCutPlaneButton(self):
+    self.logic.addCutPlane()
+
+  def onCenterBoneCutPlanesButton(self):
+    self.logic.centerBoneCutPlanes()
+
+  def onCreateMiterBoxesFromBoneCutPlanesButton(self):
+    self.logic.createMiterBoxesFromBoneCutPlanes()
+
+  def onCreateBoneCylindersFiducialListButton(self):
+    self.logic.createBoneCylindersFiducialList()
+
+  def onCreateCylindersFromFiducialListAndBoneSurgicalGuideBasesButton(self):
+    self.logic.createCylindersFromFiducialListAndBoneSurgicalGuideBases(self)
+
+  def onMakeBooleanOperationsToBoneSurgicalGuideBasesButton(self):
+    self.logic.makeBooleanOperationsToBoneSurgicalGuideBases()
+
 #
 # DeformityCorrectionOsteotomyPlannerLogic
 #
@@ -281,6 +350,41 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     Called when the logic class is instantiated. Can be used for initializing member variables.
     """
     ScriptedLoadableModuleLogic.__init__(self)
+    self.boneCutPlaneObserversAndNodeIDList = []
+    self.planeModifiedTimer = qt.QTimer()
+    self.planeModifiedTimer.setInterval(300)
+    self.planeModifiedTimer.setSingleShot(True)
+    self.planeModifiedTimer.connect('timeout()', self.onPlaneModifiedTimerTimeout)
+
+    customLayout = """
+      <layout type="vertical">
+      <item>
+        <view class="vtkMRMLViewNode" singletontag="1">
+          <property name="viewlabel" action="default">1</property>
+        </view>
+      </item>
+      <item>
+        <view class="vtkMRMLViewNode" singletontag="2">
+        <property name="viewlabel" action="default">2</property>
+        </view>
+      </item>
+      </layout>
+    """
+    # Built-in layout IDs are all below 100, so you can choose any large random number
+    # for your custom layout ID.
+    self.customLayoutId=102
+
+    layoutManager = slicer.app.layoutManager()
+    layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(self.customLayoutId, customLayout)
+
+    # Add button to layout selector toolbar for this custom layout
+    viewToolBar = slicer.util.mainWindow().findChild('QToolBar', 'ViewToolBar')
+    layoutMenu = viewToolBar.widgetForAction(viewToolBar.actions()[0]).menu()
+    layoutSwitchActionParent = layoutMenu  # use `layoutMenu` to add inside layout list, use `viewToolBar` to add next the standard layout list
+    layoutSwitchAction = layoutSwitchActionParent.addAction("DeformityCorrectionOsteotomyPlanner") # add inside layout list
+    layoutSwitchAction.setData(self.customLayoutId)
+    layoutSwitchAction.setIcon(qt.QIcon(':Icons/Go.png'))
+    layoutSwitchAction.setToolTip('Deformed Bone 3D View, Corrected Bone 3D View')
 
   def setDefaultParameters(self, parameterNode):
     """
@@ -300,174 +404,118 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     else:
       return shNode.CreateFolderItem(sceneItemID,"DeformityCorrectionOsteotomyPlanner")
   
-  def addBoneLinearCurve(self):
-    linearCurveNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLMarkupsCurveNode")
-    linearCurveNode.SetName("temp")
-    slicer.mrmlScene.AddNode(linearCurveNode)
-    slicer.modules.markups.logic().AddNewDisplayNodeForMarkupsNode(linearCurveNode)
-    linearCurveNode.SetCurveTypeToLinear()
+  def addBoneCurve(self):
+    boneCurveNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLMarkupsCurveNode")
+    boneCurveNode.SetName("temp")
+    slicer.mrmlScene.AddNode(boneCurveNode)
+    slicer.modules.markups.logic().AddNewDisplayNodeForMarkupsNode(boneCurveNode)
     shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
-    linearCurveNodeItemID = shNode.GetItemByDataNode(linearCurveNode)
-    shNode.SetItemParent(linearCurveNodeItemID, self.getParentFolderItemID())
-    linearCurveNode.SetName(slicer.mrmlScene.GetUniqueNameByString("boneLinearCurve"))
+    boneCurveNodeItemID = shNode.GetItemByDataNode(boneCurveNode)
+    shNode.SetItemParent(boneCurveNodeItemID, self.getParentFolderItemID())
+    boneCurveNode.SetName(slicer.mrmlScene.GetUniqueNameByString("boneCurve"))
 
     #setup placement
-    slicer.modules.markups.logic().SetActiveListID(linearCurveNode)
+    slicer.modules.markups.logic().SetActiveListID(boneCurveNode)
     interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
     interactionNode.SwitchToSinglePlaceMode()
 
-  def createBoneCenterline(self):
-    import time
-    startTime = time.time()
-    logging.info('Processing started')
-
+  def addCutPlane(self):
     parameterNode = self.getParameterNode()
-    boneLinearCurve = parameterNode.GetNodeReference("boneLinearCurve")
-    boneModel = parameterNode.GetNodeReference("boneModel")
-    boneCenterline = parameterNode.GetNodeReference("boneCenterline")
-    numberOfIterationsOfCreateBoneCenterline = int(parameterNode.GetParameter("numberOfIterationsOfCreateBoneCenterline"))
-    
-    slicer.mrmlScene.RemoveNode(boneCenterline)
-    boneCenterline = self.createStartingCenterline()
 
-    resampleNumberOfPoints = [8,16,32,64,128]
-
+    planeNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLMarkupsPlaneNode")
+    planeNode.SetName("temp")
+    slicer.mrmlScene.AddNode(planeNode)
+    slicer.modules.markups.logic().AddNewDisplayNodeForMarkupsNode(planeNode)
     shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
-    intersectionsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Intersections")
+    boneCutPlanesFolder = shNode.GetItemByName("Bone Cut Planes")
+    if not boneCutPlanesFolder:
+      boneCutPlanesFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Bone Cut Planes")
+    planeNodeItemID = shNode.GetItemByDataNode(planeNode)
+    shNode.SetItemParent(planeNodeItemID, boneCutPlanesFolder)
+    planeNode.SetName(slicer.mrmlScene.GetUniqueNameByString("boneCutPlane"))
 
-    for i in range(numberOfIterationsOfCreateBoneCenterline):
-      sampleDist = boneCenterline.GetCurveLengthWorld()/(resampleNumberOfPoints[i] - 1)
-      boneCenterline.ResampleCurveWorld(sampleDist)
+    #display node of the plane
+    displayNode = planeNode.GetDisplayNode()
+    displayNode.SetGlyphScale(2.5)
 
-      arrayOfPoints = slicer.util.arrayFromMarkupsControlPoints(boneCenterline)
+    deformedBoneViewNode = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
+    displayNode.AddViewNodeID(deformedBoneViewNode.GetID())
 
-      for j in range(2):
+    #conections
+    self.planeNodeObserver = planeNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointPositionDefinedEvent,self.onPlanePointAdded)
 
-        listOfNewPoints = []
+    #setup placement
+    slicer.modules.markups.logic().SetActiveListID(planeNode)
+    interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
+    interactionNode.SwitchToSinglePlaceMode()
 
-        lineStartPos = arrayOfPoints[0]
-        lineEndPos = arrayOfPoints[1]
-        origin = lineStartPos
-        zDirection = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
-
-        intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection%d' % 0)
-        intersectionModel.CreateDefaultDisplayNodes()
-        self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel, zDirection, origin, intersectionModel)
-        intersectionModelItemID = shNode.GetItemByDataNode(intersectionModel)
-        shNode.SetItemParent(intersectionModelItemID, intersectionsFolder)
-
-        listOfNewPoints.append(self.getCentroid(intersectionModel))
-
-        for i in range(1,len(arrayOfPoints)-1):
-          lineStartPos = arrayOfPoints[i-1]
-          lineEndPos = arrayOfPoints[i+1]
-          origin = arrayOfPoints[i]
-          zDirection = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
-
-          intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection%d' % i)
-          intersectionModel.CreateDefaultDisplayNodes()
-          self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel, zDirection, origin, intersectionModel)
-          intersectionModelItemID = shNode.GetItemByDataNode(intersectionModel)
-          shNode.SetItemParent(intersectionModelItemID, intersectionsFolder)
-
-          listOfNewPoints.append(self.getCentroid(intersectionModel))
-        
-        lineStartPos = arrayOfPoints[-2]
-        lineEndPos = arrayOfPoints[-1]
-        origin = lineEndPos
-        zDirection = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
-
-        intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection%d' % (boneLinearCurve.GetNumberOfControlPoints()-1))
-        intersectionModel.CreateDefaultDisplayNodes()
-        self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel, zDirection, origin, intersectionModel)
-        intersectionModelItemID = shNode.GetItemByDataNode(intersectionModel)
-        shNode.SetItemParent(intersectionModelItemID, intersectionsFolder)
-
-        listOfNewPoints.append(self.getCentroid(intersectionModel))
-
-        arrayOfPoints = np.array(listOfNewPoints)
-
-      slicer.util.updateMarkupsControlPointsFromArray(boneCenterline, arrayOfPoints)
-
-    shNode.RemoveItem(intersectionsFolder)
-
-    stopTime = time.time()
-    logging.info('Processing completed in {0:.2f} seconds\n'.format(stopTime-startTime))
-
-
-  def createStartingCenterline(self):
+  def onPlanePointAdded(self,planeNode,event):
     parameterNode = self.getParameterNode()
-    boneModel = parameterNode.GetNodeReference("boneModel")
-    boneLinearCurve = parameterNode.GetNodeReference("boneLinearCurve")
+    boneCurve = parameterNode.GetNodeReference("boneCurve")
 
-    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
-    intersectionsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Intersections")
-
-    boneCenterline = slicer.mrmlScene.CreateNodeByClass("vtkMRMLMarkupsCurveNode")
-    boneCenterline.SetName("temp")
-    slicer.mrmlScene.AddNode(boneCenterline)
-    slicer.modules.markups.logic().AddNewDisplayNodeForMarkupsNode(boneCenterline)
-    boneCenterline.SetCurveTypeToLinear()
-    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
-    boneCenterlineItemID = shNode.GetItemByDataNode(boneCenterline)
-    shNode.SetItemParent(boneCenterlineItemID, self.getParentFolderItemID())
-    boneCenterline.SetName(slicer.mrmlScene.GetUniqueNameByString("boneCenterline"))
-    boneCenterline = parameterNode.SetNodeReferenceID("boneCenterline",boneCenterline.GetID())
-
-    listOfPoints = []
-
-    lineStartPos = np.zeros(3)
-    lineEndPos = np.zeros(3)
-    boneLinearCurve.GetNthControlPointPositionWorld(0, lineStartPos)
-    boneLinearCurve.GetNthControlPointPositionWorld(1, lineEndPos)
-    origin = lineStartPos
-    zDirection = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
-
-    intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection%d' % 0)
-    intersectionModel.CreateDefaultDisplayNodes()
-    self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel, zDirection, origin, intersectionModel)
-    intersectionModelItemID = shNode.GetItemByDataNode(intersectionModel)
-    shNode.SetItemParent(intersectionModelItemID, intersectionsFolder)
-
-    listOfPoints.append(self.getCentroid(intersectionModel))
-
-    for i in range(1,boneLinearCurve.GetNumberOfControlPoints()-1):
-      boneLinearCurve.GetNthControlPointPositionWorld(i-1, lineStartPos)
-      boneLinearCurve.GetNthControlPointPositionWorld(i+1, lineEndPos)
-      boneLinearCurve.GetNthControlPointPositionWorld(i, origin)
-      zDirection = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
-
-      intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection%d' % i)
-      intersectionModel.CreateDefaultDisplayNodes()
-      self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel, zDirection, origin, intersectionModel)
-      intersectionModelItemID = shNode.GetItemByDataNode(intersectionModel)
-      shNode.SetItemParent(intersectionModelItemID, intersectionsFolder)
-
-      listOfPoints.append(self.getCentroid(intersectionModel))
+    temporalOrigin = [0,0,0]
+    planeNode.GetNthControlPointPosition(0,temporalOrigin)
     
-    boneLinearCurve.GetNthControlPointPositionWorld(boneLinearCurve.GetNumberOfControlPoints()-2, lineStartPos)
-    boneLinearCurve.GetNthControlPointPositionWorld(boneLinearCurve.GetNumberOfControlPoints()-1, lineEndPos)
-    origin = lineEndPos
-    zDirection = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
+    closestCurvePoint = [0,0,0]
+    closestCurvePointIndex = boneCurve.GetClosestPointPositionAlongCurveWorld(temporalOrigin,closestCurvePoint)
+    matrix = vtk.vtkMatrix4x4()
+    boneCurve.GetCurvePointToWorldTransformAtPointIndex(closestCurvePointIndex,matrix)
+    cutPlaneOrigin = np.array([matrix.GetElement(0,3),matrix.GetElement(1,3),matrix.GetElement(2,3)])
+    cutPlaneX = np.array([matrix.GetElement(0,0),matrix.GetElement(1,0),matrix.GetElement(2,0)])
+    cutPlaneY = np.array([matrix.GetElement(0,1),matrix.GetElement(1,1),matrix.GetElement(2,1)])
+    cutPlaneZ = np.array([matrix.GetElement(0,2),matrix.GetElement(1,2),matrix.GetElement(2,2)])
+    dx = 2.5#Numbers choosen so the planes are visible enough
+    dy = 2.5
+    planeNode.RemoveObserver(self.planeNodeObserver)
+    planeNode.SetNormal(cutPlaneZ)
+    planeNode.SetNthControlPointPositionFromArray(0,cutPlaneOrigin)
+    planeNode.SetNthControlPointPositionFromArray(1,cutPlaneOrigin + cutPlaneX*dx)
+    planeNode.SetNthControlPointPositionFromArray(2,cutPlaneOrigin + cutPlaneY*dy)
 
-    intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection%d' % (boneLinearCurve.GetNumberOfControlPoints()-1))
-    intersectionModel.CreateDefaultDisplayNodes()
-    self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel, zDirection, origin, intersectionModel)
-    intersectionModelItemID = shNode.GetItemByDataNode(intersectionModel)
-    shNode.SetItemParent(intersectionModelItemID, intersectionsFolder)
+    displayNode = planeNode.GetDisplayNode()
+    displayNode.HandlesInteractiveOn()
+    for i in range(3):
+      planeNode.SetNthControlPointVisibility(i,False)
+    observer = planeNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,self.onPlaneModifiedTimer)
+    self.boneCutPlaneObserversAndNodeIDList.append([observer,planeNode.GetID()])
 
-    listOfPoints.append(self.getCentroid(intersectionModel))
+  def onPlaneModifiedTimer(self,sourceNode,event):
+    parameterNode = self.getParameterNode()
+    parameterNode.SetNodeReferenceID("lastMovedCutPlane", sourceNode.GetID())
+    self.planeModifiedTimer.start()
 
-    shNode.RemoveItem(intersectionsFolder)
+  def onPlaneModifiedTimerTimeout(self):
+    parameterNode = self.getParameterNode()
+    boneCurve = parameterNode.GetNodeReference("boneCurve")
+    planeNode = parameterNode.GetNodeReference("lastMovedCutPlane")
+    normalAsTangentOfCurveChecked = parameterNode.GetParameter("normalAsTangentOfCurve") == "True"
+    originToCurveChecked = parameterNode.GetParameter("originToCurve") == "True"
 
-    points = vtk.vtkPoints()
-    curvePointsArray = np.array(listOfPoints)
-    vtkPointsData = vtk.util.numpy_support.numpy_to_vtk(curvePointsArray, deep=1)
-    points.SetNumberOfPoints(len(curvePointsArray))
-    points.SetData(vtkPointsData)
-    boneCenterline.SetControlPointPositionsWorld(points)
+    if normalAsTangentOfCurveChecked or originToCurveChecked:
+      for i in range(len(self.boneCutPlaneObserversAndNodeIDList)):
+        if self.boneCutPlaneObserversAndNodeIDList[i][1] == planeNode.GetID():
+          observerIndex = i
+      planeNode.RemoveObserver(self.boneCutPlaneObserversAndNodeIDList[observerIndex][0])
 
-    return boneCenterline
+      originOfCutPlane = [0,0,0]
+      planeNode.GetNthControlPointPosition(0,originOfCutPlane)
+      
+      closestCurvePoint = [0,0,0]
+      closestCurvePointIndex = boneCurve.GetClosestPointPositionAlongCurveWorld(originOfCutPlane,closestCurvePoint)
+      matrix = vtk.vtkMatrix4x4()
+      boneCurve.GetCurvePointToWorldTransformAtPointIndex(closestCurvePointIndex,matrix)
+      if originToCurveChecked:
+        nearestCurvePointToCutPlaneOrigin = np.array([matrix.GetElement(0,3),matrix.GetElement(1,3),matrix.GetElement(2,3)])
+        planeNode.SetOrigin(nearestCurvePointToCutPlaneOrigin)
+      if normalAsTangentOfCurveChecked:
+        curveZ = np.array([matrix.GetElement(0,2),matrix.GetElement(1,2),matrix.GetElement(2,2)])
+        planeNode.SetNormal(curveZ)
+
+      observer = planeNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,self.onPlaneModifiedTimer)
+      self.boneCutPlaneObserversAndNodeIDList[observerIndex][0] = observer
+
+    #self.createAndUpdateDynamicModelerNodes
+    #self.transformBonePieces
 
   def getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(self,modelNode,normal,origin,intersectionModel):
     plane = vtk.vtkPlane()
@@ -485,39 +533,22 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     pd = model.GetPolyData().GetPoints().GetData()
     from vtk.util.numpy_support import vtk_to_numpy
     return np.average(vtk_to_numpy(pd), axis=0)
+
+  def centerBoneCutPlanes(self):
+    pass
+
+  def onCreateMiterBoxesFromBoneCutPlanes(self):
+    pass
+
+  def onCreateBoneCylindersFiducialList(self):
+    pass
+
+  def onCreateCylindersFromFiducialListAndBoneSurgicalGuideBases(self):
+    pass
+
+  def onMakeBooleanOperationsToBoneSurgicalGuideBases(self):
+    pass
   
-  def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
-    """
-    Run the processing algorithm.
-    Can be used without GUI widget.
-    :param inputVolume: volume to be thresholded
-    :param outputVolume: thresholding result
-    :param imageThreshold: values above/below this threshold will be set to 0
-    :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-    :param showResult: show output volume in slice viewers
-    """
-
-    if not inputVolume or not outputVolume:
-      raise ValueError("Input or output volume is invalid")
-
-    import time
-    startTime = time.time()
-    logging.info('Processing started')
-
-    # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-    cliParams = {
-      'InputVolume': inputVolume.GetID(),
-      'OutputVolume': outputVolume.GetID(),
-      'ThresholdValue' : imageThreshold,
-      'ThresholdType' : 'Above' if invert else 'Below'
-      }
-    cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
-    # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-    slicer.mrmlScene.RemoveNode(cliNode)
-
-    stopTime = time.time()
-    logging.info('Processing completed in {0:.2f} seconds'.format(stopTime-startTime))
-
 #
 # DeformityCorrectionOsteotomyPlannerTest
 #
