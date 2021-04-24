@@ -132,12 +132,13 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
     self.ui.boneCurveSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    self.ui.boneModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+    self.ui.boneModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onBoneModelChanged)
     self.ui.boneFiducialListSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     self.ui.boneSurgicalGuideBasesSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     
     self.ui.normalAsTangentOfCurveCheckBox.connect('stateChanged(int)', self.updateParameterNodeFromGUI)
-    self.ui.originToCurveCheckBox.connect('stateChanged(int)', self.updateParameterNodeFromGUI)
+    self.ui.originToCurveCheckBox.connect('stateChanged(int)', self.onOriginToCurveCheckBox)
+    self.ui.originToCenterCheckBox.connect('stateChanged(int)', self.onOriginToCenterCheckBox)
 
     self.ui.miterBoxSlotWidthSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
     self.ui.miterBoxSlotLengthSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
@@ -175,6 +176,12 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
 
     layoutManager = slicer.app.layoutManager()
     layoutManager.setLayout(self.logic.customLayoutId)
+
+    deformedBoneViewNode = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
+    correctedBoneViewNode = slicer.mrmlScene.GetSingletonNode("2", "vtkMRMLViewNode")
+
+    deformedBoneViewNode.SetLinkedControl(True)
+    correctedBoneViewNode.SetLinkedControl(True)
 
   def exit(self):
     """
@@ -283,7 +290,6 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
 
     self._parameterNode.SetNodeReferenceID("boneCurve", self.ui.boneCurveSelector.currentNodeID)
-    self._parameterNode.SetNodeReferenceID("boneModel", self.ui.boneModelSelector.currentNodeID)
     self._parameterNode.SetNodeReferenceID("boneFiducialList", self.ui.boneFiducialListSelector.currentNodeID)
     self._parameterNode.SetNodeReferenceID("boneSurgicalGuideBases", self.ui.boneSurgicalGuideBasesSelector.currentNodeID)
     
@@ -298,11 +304,49 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
       self._parameterNode.SetParameter("normalAsTangentOfCurve","True")
     else:
       self._parameterNode.SetParameter("normalAsTangentOfCurve","False")
+
+    self._parameterNode.EndModify(wasModified)
+
+  def onBoneModelChanged(self, caller=None, event=None):
+    if self._parameterNode is None or self._updatingGUIFromParameterNode:
+      return
+
+    wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
+    self._parameterNode.SetNodeReferenceID("boneModel", self.ui.boneModelSelector.currentNodeID)
+    self._parameterNode.EndModify(wasModified)
+    
+    displayNode = self.ui.boneModelSelector.currentNode().GetDisplayNode()
+    deformedBoneViewNode = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
+    displayNode.AddViewNodeID(deformedBoneViewNode.GetID())
+
+  def onOriginToCurveCheckBox(self):
+    if self._parameterNode is None or self._updatingGUIFromParameterNode:
+      return
+
+    wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
+    
     if self.ui.originToCurveCheckBox.checked:
       self._parameterNode.SetParameter("originToCurve","True")
+      self.ui.originToCenterCheckBox.checked = False
+      self._parameterNode.SetParameter("originToCenter","False")
     else:
       self._parameterNode.SetParameter("originToCurve","False")
+    
+    self._parameterNode.EndModify(wasModified)
 
+  def onOriginToCenterCheckBox(self):
+    if self._parameterNode is None or self._updatingGUIFromParameterNode:
+      return
+    
+    wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
+    
+    if self.ui.originToCenterCheckBox.checked:
+      self._parameterNode.SetParameter("originToCenter","True")
+      self.ui.originToCurveCheckBox.checked = False
+      self._parameterNode.SetParameter("originToCurve","False")
+    else:
+      self._parameterNode.SetParameter("originToCenter","False")
+    
     self._parameterNode.EndModify(wasModified)
 
   def onAddBoneCurveButton(self):
@@ -453,6 +497,10 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     parameterNode = self.getParameterNode()
     boneCurve = parameterNode.GetNodeReference("boneCurve")
 
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    boneCutPlanesFolder = shNode.GetItemByName("Bone Cut Planes")
+    boneCutPlanesList = createListFromFolderID(boneCutPlanesFolder)
+
     temporalOrigin = [0,0,0]
     planeNode.GetNthControlPointPosition(0,temporalOrigin)
     
@@ -478,6 +526,28 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
       planeNode.SetNthControlPointVisibility(i,False)
     observer = planeNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,self.onPlaneModifiedTimer)
     self.boneCutPlaneObserversAndNodeIDList.append([observer,planeNode.GetID()])
+
+
+    boneCutPlaneAndCurvePointIndexList = []
+    for i in range(len(boneCutPlanesList)):
+      origin = [0,0,0]
+      boneCutPlanesList[i].GetNthControlPointPosition(0,origin)
+      closestCurvePoint = [0,0,0]
+      closestCurvePointIndex = boneCurve.GetClosestPointPositionAlongCurveWorld(origin,closestCurvePoint)
+      boneCutPlaneAndCurvePointIndexList.append([boneCutPlanesList[i],closestCurvePointIndex])
+    
+    boneCutPlaneAndCurvePointIndexList.sort(key = lambda item : item[1])
+
+    boneCutPlanesFolder2 = shNode.CreateFolderItem(self.getParentFolderItemID(),"Bone Cut Planes 2")
+    
+    for i in range(len(boneCutPlaneAndCurvePointIndexList)):
+      boneCutPlane = boneCutPlaneAndCurvePointIndexList[i][0]
+      boneCutPlaneItemID = shNode.GetItemByDataNode(boneCutPlane)
+      shNode.SetItemParent(boneCutPlaneItemID, boneCutPlanesFolder2)
+
+    shNode.RemoveItem(boneCutPlanesFolder)
+    shNode.SetItemName(boneCutPlanesFolder2,"Bone Cut Planes")
+
 
   def onPlaneModifiedTimer(self,sourceNode,event):
     parameterNode = self.getParameterNode()
@@ -514,8 +584,157 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
       observer = planeNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,self.onPlaneModifiedTimer)
       self.boneCutPlaneObserversAndNodeIDList[observerIndex][0] = observer
 
-    #self.createAndUpdateDynamicModelerNodes
-    #self.transformBonePieces
+    self.createAndUpdateDynamicModelerNodes()
+    self.transformBonePiecesToCorrectedPosition()
+
+  def createAndUpdateDynamicModelerNodes(self):
+    parameterNode = self.getParameterNode()
+    #useNonDecimatedBoneModelsForPreviewChecked = parameterNode.GetParameter("useNonDecimatedBoneModelsForPreview") == "True"
+    boneCurve = parameterNode.GetNodeReference("boneCurve")
+    nonDecimatedBoneModelNode = parameterNode.GetNodeReference("boneModel")
+    #decimatedFibulaModelNode = parameterNode.GetNodeReference("decimatedFibulaModelNode")
+     
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    boneCutPlanesFolder = shNode.GetItemByName("Bone Cut Planes")
+    boneCutPlanesList = createListFromFolderID(boneCutPlanesFolder)
+
+    boneModelNode = nonDecimatedBoneModelNode
+
+    planeCutsFolder = shNode.GetItemByName("Plane Cuts")
+    shNode.RemoveItem(planeCutsFolder)
+    cutBonePiecesFolder = shNode.GetItemByName("Cut Bone Pieces")
+    shNode.RemoveItem(cutBonePiecesFolder)
+    planeCutsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Plane Cuts")
+    cutBonePiecesFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Cut Bone Pieces")
+
+    aux = slicer.mrmlScene.GetNodeByID('vtkMRMLColorTableNodeFileMediumChartColors.txt')
+    colorTable = aux.GetLookupTable()
+    nColors = colorTable.GetNumberOfColors()
+
+    for i in range(0,len(boneCutPlanesList)):
+      if i==0:
+        modelName = "Bone Segment %d" % 0
+        indColor = 0
+      elif i!=(len(boneCutPlanesList)-1):
+        #Only one execution per bone segment between two planes
+        if i%2 == 0:
+          continue
+        modelName = "Bone Segment %d" % (i//2 +1)
+        indColor = (i//2 +1)%(nColors-1)
+      else:
+        modelName = "Bone Segment %d" % (len(boneCutPlanesList)-1)
+        indColor = (i//2 +1)%(nColors-1)
+
+      modelNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLModelNode")
+      modelNode.SetName(modelName)
+      slicer.mrmlScene.AddNode(modelNode)
+      modelNode.CreateDefaultDisplayNodes()
+      modelDisplayNode = modelNode.GetDisplayNode()
+      correctedBoneViewNode = slicer.mrmlScene.GetSingletonNode("2", "vtkMRMLViewNode")
+      modelDisplayNode.AddViewNodeID(correctedBoneViewNode.GetID())
+
+      #Set color of the model
+      colorwithalpha = colorTable.GetTableValue(indColor)
+      color = [colorwithalpha[0],colorwithalpha[1],colorwithalpha[2]]
+      modelDisplayNode.SetColor(color)
+
+      dynamicModelerNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLDynamicModelerNode")
+      dynamicModelerNode.SetToolName("Plane cut")
+      dynamicModelerNode.SetNodeReferenceID("PlaneCut.InputModel", boneModelNode.GetID())
+      if i==0:
+        dynamicModelerNode.AddNodeReferenceID("PlaneCut.InputPlane", boneCutPlanesList[0].GetID()) 
+        dynamicModelerNode.SetNodeReferenceID("PlaneCut.OutputNegativeModel", modelNode.GetID())
+      elif i!=(len(boneCutPlanesList)-1):
+        dynamicModelerNode.AddNodeReferenceID("PlaneCut.InputPlane", boneCutPlanesList[i+1].GetID())
+        dynamicModelerNode.AddNodeReferenceID("PlaneCut.InputPlane", boneCutPlanesList[i].GetID())  
+        dynamicModelerNode.SetNodeReferenceID("PlaneCut.OutputNegativeModel", modelNode.GetID())
+      else:
+        dynamicModelerNode.AddNodeReferenceID("PlaneCut.InputPlane", boneCutPlanesList[len(boneCutPlanesList)-1].GetID()) 
+        dynamicModelerNode.SetNodeReferenceID("PlaneCut.OutputPositiveModel", modelNode.GetID())
+      dynamicModelerNode.SetAttribute("OperationType", "Difference")
+        
+      dynamicModelerNodeItemID = shNode.GetItemByDataNode(dynamicModelerNode)
+      shNode.SetItemParent(dynamicModelerNodeItemID, planeCutsFolder)
+      modelNodeItemID = shNode.GetItemByDataNode(modelNode)
+      shNode.SetItemParent(modelNodeItemID, cutBonePiecesFolder)
+  
+      slicer.modules.dynamicmodeler.logic().RunDynamicModelerTool(dynamicModelerNode)
+
+  def transformBonePiecesToCorrectedPosition(self):
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    bonePiecesTransformFolder = shNode.GetItemByName("Bone Pieces Transforms")
+    shNode.RemoveItem(bonePiecesTransformFolder)
+    bonePiecesTransformFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Bone Pieces Transforms")
+ 
+    boneCutPlanesFolder = shNode.GetItemByName("Bone Cut Planes")
+    cutBonePiecesFolder = shNode.GetItemByName("Cut Bone Pieces")
+    boneCutPlanesList = createListFromFolderID(boneCutPlanesFolder)
+    cutBonePiecesList = createListFromFolderID(cutBonePiecesFolder)
+
+    boneCutPlane1ToBoneCutPlane0TransformList = []
+
+    #for i in range(len(boneCutPlanesList)-1,-1,-2):
+    for i in range(0,len(boneCutPlanesList),2):
+      boneCutPlane0matrix = vtk.vtkMatrix4x4()
+      boneCutPlane1matrix = vtk.vtkMatrix4x4()
+      boneCutPlanesList[i].GetPlaneToWorldMatrix(boneCutPlane0matrix)
+      boneCutPlanesList[i+1].GetPlaneToWorldMatrix(boneCutPlane1matrix)
+      boneCutPlane0X = np.array([boneCutPlane0matrix.GetElement(0,0),boneCutPlane0matrix.GetElement(1,0),boneCutPlane0matrix.GetElement(2,0)])
+      boneCutPlane0Y = np.array([boneCutPlane0matrix.GetElement(0,1),boneCutPlane0matrix.GetElement(1,1),boneCutPlane0matrix.GetElement(2,1)])
+      boneCutPlane0Z = np.array([boneCutPlane0matrix.GetElement(0,2),boneCutPlane0matrix.GetElement(1,2),boneCutPlane0matrix.GetElement(2,2)])
+      boneCutPlane0Origin = np.array([boneCutPlane0matrix.GetElement(0,3),boneCutPlane0matrix.GetElement(1,3),boneCutPlane0matrix.GetElement(2,3)])
+      boneCutPlane1X = np.array([boneCutPlane1matrix.GetElement(0,0),boneCutPlane1matrix.GetElement(1,0),boneCutPlane1matrix.GetElement(2,0)])
+      boneCutPlane1Y = np.array([boneCutPlane1matrix.GetElement(0,1),boneCutPlane1matrix.GetElement(1,1),boneCutPlane1matrix.GetElement(2,1)])
+      boneCutPlane1Z = np.array([boneCutPlane1matrix.GetElement(0,2),boneCutPlane1matrix.GetElement(1,2),boneCutPlane1matrix.GetElement(2,2)])
+      boneCutPlane1Origin = np.array([boneCutPlane1matrix.GetElement(0,3),boneCutPlane1matrix.GetElement(1,3),boneCutPlane1matrix.GetElement(2,3)])
+
+      epsilon = 0.0001
+      if not (vtk.vtkMath.Dot(boneCutPlane1Z, boneCutPlane0Z) >= 1.0 - epsilon):
+        angleRadians = vtk.vtkMath.AngleBetweenVectors(boneCutPlane1Z, boneCutPlane0Z)
+        rotationAxis = [0,0,0]
+        vtk.vtkMath.Cross(boneCutPlane0Z, boneCutPlane1Z, rotationAxis)
+        if (vtk.vtkMath.Norm(rotationAxis) < epsilon):
+          #New + old normals are facing opposite directions.
+          #Find a perpendicular axis to flip around.
+          vtk.vtkMath.Perpendiculars(boneCutPlane0Z, rotationAxis, None, 0)
+        rotationAxis = rotationAxis/np.linalg.norm(rotationAxis)
+        finalTransform = vtk.vtkTransform()
+        finalTransform.PostMultiply()
+        finalTransform.RotateWXYZ(vtk.vtkMath.DegreesFromRadians(angleRadians), rotationAxis)
+
+        finalTransform.TransformVector(boneCutPlane0X, boneCutPlane1X)
+        finalTransform.TransformVector(boneCutPlane0Y, boneCutPlane1Y)
+
+      boneCutPlane0ToWorldRotationMatrix = self.getAxes1ToWorldRotationMatrix(boneCutPlane0X,boneCutPlane0Y,boneCutPlane0Z)
+      boneCutPlane1ToWorldRotationMatrix = self.getAxes1ToWorldRotationMatrix(boneCutPlane1X,boneCutPlane1Y,boneCutPlane1Z)
+
+      boneCutPlane1ToboneCutPlane0RotationMatrix = self.getAxes1ToAxes2RotationMatrix(boneCutPlane1ToWorldRotationMatrix,boneCutPlane0ToWorldRotationMatrix)
+
+      boneCutPlane1ToboneCutPlane0Transform = vtk.vtkTransform()
+      boneCutPlane1ToboneCutPlane0Transform.PostMultiply()
+      boneCutPlane1ToboneCutPlane0Transform.Translate(-boneCutPlane1Origin)
+      boneCutPlane1ToboneCutPlane0Transform.Concatenate(boneCutPlane1ToboneCutPlane0RotationMatrix)
+      boneCutPlane1ToboneCutPlane0Transform.Translate(boneCutPlane0Origin)
+
+      boneCutPlane1ToBoneCutPlane0TransformList.append(boneCutPlane1ToboneCutPlane0Transform)
+
+    for i in range(len(cutBonePiecesList)-1,0,-1):
+      connectSegmentToPreviousSegmentTransformNode = slicer.vtkMRMLLinearTransformNode()
+      connectSegmentToPreviousSegmentTransformNode.SetName(f"ConnectSegment{i}ToSegment{i-1} Transform")
+      slicer.mrmlScene.AddNode(connectSegmentToPreviousSegmentTransformNode)
+
+      connectSegmentToPreviousSegmentTransform = vtk.vtkTransform()
+      connectSegmentToPreviousSegmentTransform.PostMultiply()
+      for j in range(0,i):
+        connectSegmentToPreviousSegmentTransform.Concatenate(boneCutPlane1ToBoneCutPlane0TransformList[i-j-1].GetMatrix())
+
+      connectSegmentToPreviousSegmentTransformNode.SetMatrixTransformToParent(connectSegmentToPreviousSegmentTransform.GetMatrix())
+
+      cutBonePiecesList[i].SetAndObserveTransformNodeID(connectSegmentToPreviousSegmentTransformNode.GetID())
+
+      connectSegmentToPreviousSegmentTransformNodeItemID = shNode.GetItemByDataNode(connectSegmentToPreviousSegmentTransformNode)
+      shNode.SetItemParent(connectSegmentToPreviousSegmentTransformNodeItemID, bonePiecesTransformFolder)
+
 
   def getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(self,modelNode,normal,origin,intersectionModel):
     plane = vtk.vtkPlane()
@@ -533,6 +752,35 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     pd = model.GetPolyData().GetPoints().GetData()
     from vtk.util.numpy_support import vtk_to_numpy
     return np.average(vtk_to_numpy(pd), axis=0)
+
+  def getAxes1ToWorldRotationMatrix(self,axis1X,axis1Y,axis1Z):
+    axes1ToWorldRotationMatrix = vtk.vtkMatrix4x4()
+    axes1ToWorldRotationMatrix.DeepCopy((1, 0, 0, 0,
+                                         0, 1, 0, 0,
+                                         0, 0, 1, 0,
+                                         0, 0, 0, 1))
+    
+    axes1ToWorldRotationMatrix.SetElement(0,0,axis1X[0])
+    axes1ToWorldRotationMatrix.SetElement(0,1,axis1X[1])
+    axes1ToWorldRotationMatrix.SetElement(0,2,axis1X[2])
+    axes1ToWorldRotationMatrix.SetElement(1,0,axis1Y[0])
+    axes1ToWorldRotationMatrix.SetElement(1,1,axis1Y[1])
+    axes1ToWorldRotationMatrix.SetElement(1,2,axis1Y[2])
+    axes1ToWorldRotationMatrix.SetElement(2,0,axis1Z[0])
+    axes1ToWorldRotationMatrix.SetElement(2,1,axis1Z[1])
+    axes1ToWorldRotationMatrix.SetElement(2,2,axis1Z[2])
+
+    return axes1ToWorldRotationMatrix
+  
+  def getAxes1ToAxes2RotationMatrix(self,axes1ToWorldRotationMatrix,axes2ToWorldRotationMatrix):
+    worldToAxes2RotationMatrix = vtk.vtkMatrix4x4()
+    worldToAxes2RotationMatrix.DeepCopy(axes2ToWorldRotationMatrix)
+    worldToAxes2RotationMatrix.Invert()
+    
+    axes1ToAxes2RotationMatrix = vtk.vtkMatrix4x4()
+    vtk.vtkMatrix4x4.Multiply4x4(worldToAxes2RotationMatrix, axes1ToWorldRotationMatrix, axes1ToAxes2RotationMatrix)
+
+    return axes1ToAxes2RotationMatrix
 
   def centerBoneCutPlanes(self):
     pass
@@ -616,3 +864,12 @@ class DeformityCorrectionOsteotomyPlannerTest(ScriptedLoadableModuleTest):
     self.assertEqual(outputScalarRange[1], inputScalarRange[1])
 
     self.delayDisplay('Test passed')
+
+def createListFromFolderID(folderID):
+  createdList = []
+  shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+  myList = vtk.vtkIdList()
+  shNode.GetItemChildren(folderID,myList)
+  for i in range(myList.GetNumberOfIds()):
+    createdList.append(shNode.GetItemDataNode(myList.GetId(i)))
+  return createdList

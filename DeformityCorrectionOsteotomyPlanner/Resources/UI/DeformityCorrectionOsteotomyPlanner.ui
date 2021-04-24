@@ -113,7 +113,15 @@ tangent of bone curve</string>
       <item>
        <widget class="QCheckBox" name="originToCurveCheckBox">
         <property name="text">
-         <string>Set as origin of plane the point nearest the curve</string>
+         <string>Set as origin of the plane the point nearest to the curve</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="originToCenterCheckBox">
+        <property name="text">
+         <string>Set as origin of plane the center of the 
+intersection of the plane with the bone</string>
         </property>
        </widget>
       </item>
@@ -312,7 +320,7 @@ tangent of bone curve</string>
          <widget class="qMRMLNodeComboBox" name="boneSurgicalGuideBasesSelector">
           <property name="nodeTypes">
            <stringlist>
-            <string>vtkMRMLMarkupsCurveNode</string>
+            <string>vtkMRMLModelNode</string>
            </stringlist>
           </property>
          </widget>
