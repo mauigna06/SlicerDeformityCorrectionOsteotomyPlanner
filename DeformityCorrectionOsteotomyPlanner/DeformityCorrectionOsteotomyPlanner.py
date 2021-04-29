@@ -557,11 +557,13 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
   def onPlaneModifiedTimerTimeout(self):
     parameterNode = self.getParameterNode()
     boneCurve = parameterNode.GetNodeReference("boneCurve")
+    boneModel = parameterNode.GetNodeReference("boneModel")
     planeNode = parameterNode.GetNodeReference("lastMovedCutPlane")
     normalAsTangentOfCurveChecked = parameterNode.GetParameter("normalAsTangentOfCurve") == "True"
     originToCurveChecked = parameterNode.GetParameter("originToCurve") == "True"
+    originToCenterChecked = parameterNode.GetParameter("originToCenter") == "True"
 
-    if normalAsTangentOfCurveChecked or originToCurveChecked:
+    if normalAsTangentOfCurveChecked or originToCurveChecked or originToCenterChecked:
       for i in range(len(self.boneCutPlaneObserversAndNodeIDList)):
         if self.boneCutPlaneObserversAndNodeIDList[i][1] == planeNode.GetID():
           observerIndex = i
@@ -577,6 +579,13 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
       if originToCurveChecked:
         nearestCurvePointToCutPlaneOrigin = np.array([matrix.GetElement(0,3),matrix.GetElement(1,3),matrix.GetElement(2,3)])
         planeNode.SetOrigin(nearestCurvePointToCutPlaneOrigin)
+      elif originToCenterChecked:
+        intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection')
+        intersectionModel.CreateDefaultDisplayNodes()
+        self.getIntersectionBetweenModelAnd1Plane(boneModel,planeNode,intersectionModel)
+        intersectionModelCentroid = self.getCentroid(intersectionModel)
+        slicer.mrmlScene.RemoveNode(intersectionModel)
+        planeNode.SetOrigin(intersectionModelCentroid)
       if normalAsTangentOfCurveChecked:
         curveZ = np.array([matrix.GetElement(0,2),matrix.GetElement(1,2),matrix.GetElement(2,2)])
         planeNode.SetNormal(curveZ)
@@ -736,8 +745,12 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
       shNode.SetItemParent(connectSegmentToPreviousSegmentTransformNodeItemID, bonePiecesTransformFolder)
 
 
-  def getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(self,modelNode,normal,origin,intersectionModel):
+  def getIntersectionBetweenModelAnd1Plane(self,modelNode,planeNode,intersectionModel):
     plane = vtk.vtkPlane()
+    origin = [0,0,0]
+    normal = [0,0,0]
+    planeNode.GetOrigin(origin)
+    planeNode.GetNormal(normal)
     plane.SetOrigin(origin)
     plane.SetNormal(normal)
 
