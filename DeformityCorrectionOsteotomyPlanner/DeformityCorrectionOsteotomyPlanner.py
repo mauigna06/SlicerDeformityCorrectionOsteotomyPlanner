@@ -512,8 +512,8 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     cutPlaneX = np.array([matrix.GetElement(0,0),matrix.GetElement(1,0),matrix.GetElement(2,0)])
     cutPlaneY = np.array([matrix.GetElement(0,1),matrix.GetElement(1,1),matrix.GetElement(2,1)])
     cutPlaneZ = np.array([matrix.GetElement(0,2),matrix.GetElement(1,2),matrix.GetElement(2,2)])
-    dx = 2.5#Numbers choosen so the planes are visible enough
-    dy = 2.5
+    dx = 40#Numbers choosen so the planes are visible enough
+    dy = 40
     planeNode.RemoveObserver(self.planeNodeObserver)
     planeNode.SetNormal(cutPlaneZ)
     planeNode.SetNthControlPointPositionFromArray(0,cutPlaneOrigin)
@@ -631,7 +631,7 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
         modelName = "Bone Segment %d" % (i//2 +1)
         indColor = (i//2 +1)%(nColors-1)
       else:
-        modelName = "Bone Segment %d" % (len(boneCutPlanesList)-1)
+        modelName = "Bone Segment %d" % (len(boneCutPlanesList)-2)
         indColor = (i//2 +1)%(nColors-1)
 
       modelNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLModelNode")
