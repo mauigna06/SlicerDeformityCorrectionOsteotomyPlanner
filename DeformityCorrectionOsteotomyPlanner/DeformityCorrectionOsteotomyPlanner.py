@@ -353,7 +353,7 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     self.logic.addBoneCurve()
 
   def onLoadBoneModelButton(self):
-    screwPath = os.path.join(os.path.dirname(slicer.modules.deformitycorrectionosteotomyplanner.path), 'Resources/deformedBone.vtk')
+    screwPath = os.path.join(os.path.dirname(slicer.modules.deformitycorrectionosteotomyplanner.path), 'Resources/deformedBone.stl')
     screwPath = screwPath.replace("\\","/")
     screwModel = slicer.modules.models.logic().AddModel(screwPath)
 
@@ -796,7 +796,49 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     return axes1ToAxes2RotationMatrix
 
   def centerBoneCutPlanes(self):
-    pass
+    parameterNode = self.getParameterNode()
+    nonDecimatedBoneModel = parameterNode.GetNodeReference("boneModel")
+     
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    boneCutPlanesFolder = shNode.GetItemByName("Bone Cut Planes")
+    boneCutPlanesList = createListFromFolderID(boneCutPlanesFolder)
+
+    boneModel = nonDecimatedBoneModel
+
+    self.removeBoneCutPlanesObservers()
+
+    for i in range(len(boneCutPlanesList)):
+      planeNode = boneCutPlanesList[i]
+      intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection')
+      intersectionModel.CreateDefaultDisplayNodes()
+      self.getIntersectionBetweenModelAnd1Plane(boneModel,planeNode,intersectionModel)
+      intersectionModelCentroid = self.getCentroid(intersectionModel)
+      slicer.mrmlScene.RemoveNode(intersectionModel)
+      planeNode.SetOrigin(intersectionModelCentroid)
+
+    self.addBoneCutPlanesObservers()
+
+    self.createAndUpdateDynamicModelerNodes()
+    self.transformBonePiecesToCorrectedPosition()
+
+  def addBoneCutPlanesObservers(self):
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    boneCutPlanesFolder = shNode.GetItemByName("Bone Cut Planes")
+    boneCutPlanesList = createListFromFolderID(boneCutPlanesFolder)
+
+    for i in range(len(boneCutPlanesList)):
+      observer = boneCutPlanesList[i].AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,self.onPlaneModifiedTimer)
+      self.boneCutPlaneObserversAndNodeIDList.append([observer,boneCutPlanesList[i].GetID()])
+
+  def removeBoneCutPlanesObservers(self):
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    boneCutPlanesFolder = shNode.GetItemByName("Bone Cut Planes")
+    boneCutPlanesList = createListFromFolderID(boneCutPlanesFolder)
+
+    for i in range(len(boneCutPlanesList)):
+      boneCutPlane = slicer.mrmlScene.GetNodeByID(self.boneCutPlaneObserversAndNodeIDList[i][1])
+      boneCutPlane.RemoveObserver(self.boneCutPlaneObserversAndNodeIDList[i][0])
+    self.boneCutPlaneObserversAndNodeIDList = []  
 
   def onCreateMiterBoxesFromBoneCutPlanes(self):
     pass
