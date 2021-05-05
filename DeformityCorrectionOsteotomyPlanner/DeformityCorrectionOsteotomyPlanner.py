@@ -140,6 +140,7 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     self.ui.originToCurveCheckBox.connect('stateChanged(int)', self.onOriginToCurveCheckBox)
     self.ui.originToCenterCheckBox.connect('stateChanged(int)', self.onOriginToCenterCheckBox)
 
+    self.ui.multiplierOfMaxRadiusSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
     self.ui.miterBoxSlotWidthSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
     self.ui.miterBoxSlotLengthSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
     self.ui.miterBoxSlotHeightSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
@@ -153,6 +154,7 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     self.ui.addBoneCurveButton.connect('clicked(bool)',self.onAddBoneCurveButton)
     self.ui.addCutPlaneButton.connect('clicked(bool)',self.onAddCutPlaneButton)
     self.ui.centerBoneCutPlanesButton.connect('clicked(bool)',self.onCenterBoneCutPlanesButton)
+    self.ui.automaticNormalAndOriginDefinitionOfBoneCutPlanesButton.connect('clicked(bool)',self.onAutomaticNormalAndOriginDefinitionOfBoneCutPlanesButton)
     self.ui.createMiterBoxesFromBoneCutPlanesButton.connect('clicked(bool)',self.onCreateMiterBoxesFromBoneCutPlanesButton)
     self.ui.createBoneCylindersFiducialListButton.connect('clicked(bool)',self.onCreateBoneCylindersFiducialListButton)
     self.ui.createCylindersFromFiducialListAndBoneSurgicalGuideBasesButton.connect('clicked(bool)',self.onCreateCylindersFromFiducialListAndBoneSurgicalGuideBasesButton)
@@ -259,6 +261,8 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     self.ui.boneFiducialListSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneFiducialList"))
     self.ui.boneSurgicalGuideBasesSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneSurgicalGuideBases"))
     
+    if self._parameterNode.GetParameter("multiplierOfMaxRadius") != '':
+      self.ui.multiplierOfMaxRadiusSpinBox.setValue(float(self._parameterNode.GetParameter("multiplierOfMaxRadius")))
     if self._parameterNode.GetParameter("miterBoxSlotWidth") != '':
       self.ui.miterBoxSlotWidthSpinBox.setValue(float(self._parameterNode.GetParameter("miterBoxSlotWidth")))
     if self._parameterNode.GetParameter("miterBoxSlotLength") != '':
@@ -293,6 +297,7 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     self._parameterNode.SetNodeReferenceID("boneFiducialList", self.ui.boneFiducialListSelector.currentNodeID)
     self._parameterNode.SetNodeReferenceID("boneSurgicalGuideBases", self.ui.boneSurgicalGuideBasesSelector.currentNodeID)
     
+    self._parameterNode.SetParameter("multiplierOfMaxRadius", str(self.ui.multiplierOfMaxRadiusSpinBox.value))
     self._parameterNode.SetParameter("miterBoxSlotWidth", str(self.ui.miterBoxSlotWidthSpinBox.value))
     self._parameterNode.SetParameter("miterBoxSlotLength", str(self.ui.miterBoxSlotLengthSpinBox.value))
     self._parameterNode.SetParameter("miterBoxSlotHeight", str(self.ui.miterBoxSlotHeightSpinBox.value))
@@ -362,6 +367,9 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
 
   def onCenterBoneCutPlanesButton(self):
     self.logic.centerBoneCutPlanes()
+
+  def onAutomaticNormalAndOriginDefinitionOfBoneCutPlanesButton(self):
+    self.logic.automaticNormalAndOriginDefinitionOfBoneCutPlanes()
 
   def onCreateMiterBoxesFromBoneCutPlanesButton(self):
     self.logic.createMiterBoxesFromBoneCutPlanes()
@@ -580,12 +588,7 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
         nearestCurvePointToCutPlaneOrigin = np.array([matrix.GetElement(0,3),matrix.GetElement(1,3),matrix.GetElement(2,3)])
         planeNode.SetOrigin(nearestCurvePointToCutPlaneOrigin)
       elif originToCenterChecked:
-        intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection')
-        intersectionModel.CreateDefaultDisplayNodes()
-        self.getIntersectionBetweenModelAnd1Plane(boneModel,planeNode,intersectionModel)
-        intersectionModelCentroid = self.getCentroid(intersectionModel)
-        slicer.mrmlScene.RemoveNode(intersectionModel)
-        planeNode.SetOrigin(intersectionModelCentroid)
+        self.setOriginOfPlaneToCentroidOfIntersectionWithModel(boneModel,planeNode)
       if normalAsTangentOfCurveChecked:
         curveZ = np.array([matrix.GetElement(0,2),matrix.GetElement(1,2),matrix.GetElement(2,2)])
         planeNode.SetNormal(curveZ)
@@ -839,6 +842,162 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
       boneCutPlane = slicer.mrmlScene.GetNodeByID(self.boneCutPlaneObserversAndNodeIDList[i][1])
       boneCutPlane.RemoveObserver(self.boneCutPlaneObserversAndNodeIDList[i][0])
     self.boneCutPlaneObserversAndNodeIDList = []  
+
+  def automaticNormalAndOriginDefinitionOfBoneCutPlanes(self):
+    self.centerBoneCutPlanes()
+
+    parameterNode = self.getParameterNode()
+    boneModel = parameterNode.GetNodeReference("boneModel")
+    multiplierOfMaxRadius = float(parameterNode.GetParameter("multiplierOfMaxRadius"))
+
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    aligmentPlanesFolder = shNode.GetItemByName("Aligment Planes")
+    shNode.RemoveItem(aligmentPlanesFolder)
+    aligmentPlanesFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Aligment Planes")
+    boneCutPlanesFolder = shNode.GetItemByName("Bone Cut Planes")
+    boneCutPlanesList = createListFromFolderID(boneCutPlanesFolder)
+
+    #Create start aligment plane
+    startAligmentPlane = slicer.mrmlScene.CreateNodeByClass("vtkMRMLMarkupsPlaneNode")
+    startAligmentPlane.SetName("temp")
+    slicer.mrmlScene.AddNode(startAligmentPlane)
+    slicer.modules.markups.logic().AddNewDisplayNodeForMarkupsNode(startAligmentPlane)
+    startAligmentPlaneItemID = shNode.GetItemByDataNode(startAligmentPlane)
+    shNode.SetItemParent(startAligmentPlaneItemID, aligmentPlanesFolder)
+    startAligmentPlane.SetName(slicer.mrmlScene.GetUniqueNameByString("startAligmentPlane"))
+
+    #display node of the plane
+    displayNode = startAligmentPlane.GetDisplayNode()
+    deformedBoneViewNode = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
+    displayNode.AddViewNodeID(deformedBoneViewNode.GetID())
+
+    startAligmentPlane.CopyContent(boneCutPlanesList[0])
+
+    maxRadiusOfIntersection = self.getMaxRadiusOfIntersectionOfModelAndPlane(boneModel,startAligmentPlane)
+
+    firstBoneCutPlaneOrigin = np.array([0,0,0])
+    firstBoneCutPlaneZ = [0,0,0]
+    boneCutPlanesList[0].GetOrigin(firstBoneCutPlaneOrigin)
+    boneCutPlanesList[0].GetNormal(firstBoneCutPlaneZ)
+    firstBoneCutPlaneZ = np.array(firstBoneCutPlaneZ)
+    startAligmentPlane.SetOrigin(firstBoneCutPlaneOrigin-firstBoneCutPlaneZ*multiplierOfMaxRadius*maxRadiusOfIntersection)
+    self.setOriginOfPlaneToCentroidOfIntersectionWithModel(boneModel,startAligmentPlane)
+
+    #Create end aligment plane
+    endAligmentPlane = slicer.mrmlScene.CreateNodeByClass("vtkMRMLMarkupsPlaneNode")
+    endAligmentPlane.SetName("temp")
+    slicer.mrmlScene.AddNode(endAligmentPlane)
+    slicer.modules.markups.logic().AddNewDisplayNodeForMarkupsNode(endAligmentPlane)
+    endAligmentPlaneItemID = shNode.GetItemByDataNode(endAligmentPlane)
+    shNode.SetItemParent(endAligmentPlaneItemID, aligmentPlanesFolder)
+    endAligmentPlane.SetName(slicer.mrmlScene.GetUniqueNameByString("endAligmentPlane"))
+
+    #display node of the plane
+    displayNode = endAligmentPlane.GetDisplayNode()
+    deformedBoneViewNode = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
+    displayNode.AddViewNodeID(deformedBoneViewNode.GetID())
+
+    endAligmentPlane.CopyContent(boneCutPlanesList[-1])
+
+    maxRadiusOfIntersection = self.getMaxRadiusOfIntersectionOfModelAndPlane(boneModel,endAligmentPlane)
+
+    lastBoneCutPlaneOrigin = np.array([0,0,0])
+    lastBoneCutPlaneZ = [0,0,0]
+    boneCutPlanesList[-1].GetOrigin(lastBoneCutPlaneOrigin)
+    boneCutPlanesList[-1].GetNormal(lastBoneCutPlaneZ)
+    lastBoneCutPlaneZ = np.array(lastBoneCutPlaneZ)
+    endAligmentPlane.SetOrigin(lastBoneCutPlaneOrigin+lastBoneCutPlaneZ*multiplierOfMaxRadius*maxRadiusOfIntersection)
+    self.setOriginOfPlaneToCentroidOfIntersectionWithModel(boneModel,endAligmentPlane)
+
+    listOfPlanesToUpdate = [startAligmentPlane] + boneCutPlanesList + [endAligmentPlane]
+
+    self.removeBoneCutPlanesObservers()
+    self.automaticNormalAndOriginDefinitionOfPlanes(listOfPlanesToUpdate)
+    self.addBoneCutPlanesObservers()
+
+    self.createAndUpdateDynamicModelerNodes()
+    self.transformBonePiecesToCorrectedPosition()
+
+  def automaticNormalAndOriginDefinitionOfPlanes(self,planeList):
+    parameterNode = self.getParameterNode()
+    boneModel = parameterNode.GetNodeReference("boneModel")
+
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+
+    for i in range(0,len(planeList),2):
+      intersectionsForCentroidCalculationFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Intersections For Centroid Calculation")
+
+      lineStartPos = np.array([0,0,0])
+      lineEndPos = np.array([0,0,0])
+      planeList[i].GetOrigin(lineStartPos)
+      planeList[i+1].GetOrigin(lineEndPos)
+
+      numberOfRepetitionsOfPositioningAlgorithm = 5
+      for k in range(numberOfRepetitionsOfPositioningAlgorithm):
+        oldLineStartPos = lineStartPos
+        oldLineEndPos = lineEndPos
+
+        planeNormal = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
+
+        intersectionStart = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection Start %d' % i)
+        intersectionEnd = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection End %d' % i)
+        intersectionStart.CreateDefaultDisplayNodes()
+        intersectionEnd.CreateDefaultDisplayNodes()
+        
+        intersectionStartModelItemID = shNode.GetItemByDataNode(intersectionStart)
+        shNode.SetItemParent(intersectionStartModelItemID, intersectionsForCentroidCalculationFolder)
+        intersectionEndModelItemID = shNode.GetItemByDataNode(intersectionEnd)
+        shNode.SetItemParent(intersectionEndModelItemID, intersectionsForCentroidCalculationFolder)
+        
+        self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel,planeNormal,lineStartPos,intersectionStart)
+        self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(boneModel,planeNormal,lineEndPos,intersectionEnd)
+        lineStartPos = self.getCentroid(intersectionStart)
+        lineEndPos = self.getCentroid(intersectionEnd)
+
+        error = np.linalg.norm(lineStartPos-oldLineStartPos) + np.linalg.norm(lineEndPos-oldLineEndPos)
+        if error < 0.01:# Unavoidable errors because of fibula bone shape are about 0.6-0.8mm
+          break
+      
+      planeList[i].SetOrigin(lineStartPos)
+      planeList[i+1].SetOrigin(lineEndPos)
+      planeNormal = (lineEndPos-lineStartPos)/np.linalg.norm(lineEndPos-lineStartPos)
+      planeList[i].SetNormal(planeNormal)
+      planeList[i+1].SetNormal(planeNormal)
+
+      shNode.RemoveItem(intersectionsForCentroidCalculationFolder)
+          
+  def getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(self,modelNode,normal,origin,intersectionModel):
+    plane = vtk.vtkPlane()
+    plane.SetOrigin(origin)
+    plane.SetNormal(normal)
+
+    cutter = vtk.vtkCutter()
+    cutter.SetInputData(modelNode.GetPolyData())
+    cutter.SetCutFunction(plane)
+    cutter.Update()
+
+    intersectionModel.SetAndObservePolyData(cutter.GetOutput())    
+
+  def setOriginOfPlaneToCentroidOfIntersectionWithModel(self,model,planeNode):
+    intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection')
+    intersectionModel.CreateDefaultDisplayNodes()
+    self.getIntersectionBetweenModelAnd1Plane(model,planeNode,intersectionModel)
+    intersectionModelCentroid = self.getCentroid(intersectionModel)
+    slicer.mrmlScene.RemoveNode(intersectionModel)
+    planeNode.SetOrigin(intersectionModelCentroid)
+
+  def getMaxRadiusOfIntersectionOfModelAndPlane(self,modelNode,planeNode):
+    intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection')
+    intersectionModel.CreateDefaultDisplayNodes()
+    self.getIntersectionBetweenModelAnd1Plane(modelNode,planeNode,intersectionModel)
+    intersectionModelCentroid = self.getCentroid(intersectionModel)
+    pointsOfModel = slicer.util.arrayFromModelPoints(intersectionModel)
+    radiuses = np.linalg.norm(pointsOfModel-intersectionModelCentroid,axis=1)
+    maxRadiusOfIntersection = np.max(radiuses)
+
+    slicer.mrmlScene.RemoveNode(intersectionModel)
+
+    return maxRadiusOfIntersection
 
   def onCreateMiterBoxesFromBoneCutPlanes(self):
     pass

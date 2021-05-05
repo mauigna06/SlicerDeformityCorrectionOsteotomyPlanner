@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>348</width>
-    <height>878</height>
+    <height>979</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -129,6 +129,47 @@ intersection of the plane with the bone</string>
        <widget class="QPushButton" name="centerBoneCutPlanesButton">
         <property name="text">
          <string>Center bone cut planes</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QFormLayout" name="formLayout_5">
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_4">
+          <property name="text">
+           <string>Multiplier of max radius</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="ctkDoubleSpinBox" name="multiplierOfMaxRadiusSpinBox">
+          <property name="toolTip">
+           <string>Defines the multiplier of the max radius of the intersection on the first/last bone cut plane with the bone model to set the origin of the corresponding aligment plane</string>
+          </property>
+          <property name="decimals">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <double>20.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>0.100000000000000</double>
+          </property>
+          <property name="value">
+           <double>2.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QPushButton" name="automaticNormalAndOriginDefinitionOfBoneCutPlanesButton">
+        <property name="text">
+         <string>Automatic normal and origin definition
+of the bone cut planes</string>
         </property>
        </widget>
       </item>
