@@ -990,7 +990,7 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
         lineEndPos = self.getCentroid(intersectionEnd)
 
         error = np.linalg.norm(lineStartPos-oldLineStartPos) + np.linalg.norm(lineEndPos-oldLineEndPos)
-        if error < 0.01:# Unavoidable errors because of fibula bone shape are about 0.6-0.8mm
+        if error < 0.01:# Unavoidable errors because of bone shape are about 0.6-0.8mm
           break
       
       planeList[i].SetOrigin(lineStartPos)
@@ -1036,7 +1036,6 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
 
   def createMiterBoxesFromBoneCutPlanes(self):
     parameterNode = self.getParameterNode()
-    #fibulaLine = parameterNode.GetNodeReference("fibulaLine")
     miterBoxDirectionLine = parameterNode.GetNodeReference("miterBoxDirectionLine")
     miterBoxSlotWidth = float(parameterNode.GetParameter("miterBoxSlotWidth"))
     miterBoxSlotLength = float(parameterNode.GetParameter("miterBoxSlotLength"))
@@ -1071,11 +1070,11 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
         duplicateBonePieceItemID = shNode.GetItemByDataNode(duplicateBonePiece)
         shNode.SetItemParent(duplicateBonePieceItemID, duplicateBonePiecesModelsFolder)
 
-      duplicateFibulaBonePiecesList = createListFromFolderID(duplicateBonePiecesModelsFolder)
+      duplicateBonePiecesList = createListFromFolderID(duplicateBonePiecesModelsFolder)
 
       planesList = [aligmentPlanesList[0]] + boneCutPlanesList + [aligmentPlanesList[1]]
 
-      for i in range(1,len(duplicateFibulaBonePiecesList)):
+      for i in range(1,len(duplicateBonePiecesList)):
         lineStartPos = np.array([0,0,0])
         lineEndPos = np.array([0,0,0])
         planesList[2*(i-1) +2].GetOrigin(lineStartPos)
@@ -1093,8 +1092,8 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
 
         duplicateBonePieceTransformNode.SetMatrixTransformToParent(duplicateBonePieceTransform.GetMatrix())
 
-        duplicateFibulaBonePiecesList[i].SetAndObserveTransformNodeID(duplicateBonePieceTransformNode.GetID())
-        duplicateFibulaBonePiecesList[i].HardenTransform()
+        duplicateBonePiecesList[i].SetAndObserveTransformNodeID(duplicateBonePieceTransformNode.GetID())
+        duplicateBonePiecesList[i].HardenTransform()
 
         duplicateBonePieceTransformNodeItemID = shNode.GetItemByDataNode(duplicateBonePieceTransformNode)
         shNode.SetItemParent(duplicateBonePieceTransformNodeItemID, duplicateBonePiecesTransformsFolder)
@@ -1102,11 +1101,11 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
       collisionDetected = False
       
       import vtkSlicerRtCommonPython
-      for i in range(0,len(duplicateFibulaBonePiecesList) -1):
+      for i in range(0,len(duplicateBonePiecesList) -1):
         collisionDetection = vtkSlicerRtCommonPython.vtkCollisionDetectionFilter()
         #collisionDetection = vtk.vtkCollisionDetectionFilter()
-        collisionDetection.SetInputData(0, duplicateFibulaBonePiecesList[i].GetPolyData())
-        collisionDetection.SetInputData(1, duplicateFibulaBonePiecesList[i+1].GetPolyData())
+        collisionDetection.SetInputData(0, duplicateBonePiecesList[i].GetPolyData())
+        collisionDetection.SetInputData(1, duplicateBonePiecesList[i+1].GetPolyData())
         matrix1 = vtk.vtkMatrix4x4()
         collisionDetection.SetMatrix(0, matrix1)
         collisionDetection.SetMatrix(1, matrix1)
@@ -1259,13 +1258,13 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     miterBox.SetAndObservePolyData(triangleFilter.GetOutput())
     return miterBox
   
-  def onCreateBoneCylindersFiducialList(self):
+  def createBoneCylindersFiducialList(self):
     pass
 
-  def onCreateCylindersFromFiducialListAndBoneSurgicalGuideBases(self):
+  def createCylindersFromFiducialListAndBoneSurgicalGuideBases(self):
     pass
 
-  def onMakeBooleanOperationsToBoneSurgicalGuideBases(self):
+  def makeBooleanOperationsToBoneSurgicalGuideBases(self):
     pass
   
 #
