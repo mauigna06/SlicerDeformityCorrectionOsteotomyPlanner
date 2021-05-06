@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>348</width>
-    <height>979</height>
+    <height>1029</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -367,7 +367,7 @@ of the bone cut planes</string>
         <item row="1" column="0">
          <widget class="QLabel" name="label_11">
           <property name="text">
-           <string>Select bone surgical guide bases</string>
+           <string>Select bone surgical guide base</string>
           </property>
          </widget>
         </item>
@@ -388,7 +388,7 @@ of the bone cut planes</string>
          </widget>
         </item>
         <item row="1" column="1">
-         <widget class="qMRMLNodeComboBox" name="boneSurgicalGuideBasesSelector">
+         <widget class="qMRMLNodeComboBox" name="boneSurgicalGuideBaseSelector">
           <property name="nodeTypes">
            <stringlist>
             <string>vtkMRMLModelNode</string>
@@ -415,16 +415,16 @@ of the bone cut planes</string>
        </layout>
       </item>
       <item>
-       <widget class="QPushButton" name="createCylindersFromFiducialListAndBoneSurgicalGuideBasesButton">
+       <widget class="QPushButton" name="createCylindersFromFiducialListAndBoneSurgicalGuideBaseButton">
         <property name="text">
-         <string>Create cylinders from fiducial list and bone surgical guide bases</string>
+         <string>Create cylinders from fiducial list and bone surgical guide base</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="makeBooleanOperationsToBoneSurgicalGuideBasesButton">
+       <widget class="QPushButton" name="makeBooleanOperationsToBoneSurgicalGuideBaseButton">
         <property name="text">
-         <string>Make boolean operations to surgical guide bases with
+         <string>Make boolean operations to surgical guide base with
  screwHolesCylinders and miterBoxes</string>
         </property>
        </widget>
@@ -532,7 +532,7 @@ of the bone cut planes</string>
   <connection>
    <sender>DeformityCorrectionOsteotomyPlanner</sender>
    <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
-   <receiver>boneSurgicalGuideBasesSelector</receiver>
+   <receiver>boneSurgicalGuideBaseSelector</receiver>
    <slot>setMRMLScene(vtkMRMLScene*)</slot>
    <hints>
     <hint type="sourcelabel">

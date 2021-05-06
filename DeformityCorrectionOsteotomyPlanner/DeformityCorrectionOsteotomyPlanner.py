@@ -134,7 +134,7 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     self.ui.boneCurveSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     self.ui.boneModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onBoneModelChanged)
     self.ui.boneFiducialListSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    self.ui.boneSurgicalGuideBasesSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+    self.ui.boneSurgicalGuideBaseSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     
     self.ui.normalAsTangentOfCurveCheckBox.connect('stateChanged(int)', self.updateParameterNodeFromGUI)
     self.ui.originToCurveCheckBox.connect('stateChanged(int)', self.onOriginToCurveCheckBox)
@@ -159,8 +159,8 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     self.ui.automaticNormalAndOriginDefinitionOfBoneCutPlanesButton.connect('clicked(bool)',self.onAutomaticNormalAndOriginDefinitionOfBoneCutPlanesButton)
     self.ui.createMiterBoxesFromBoneCutPlanesButton.connect('clicked(bool)',self.onCreateMiterBoxesFromBoneCutPlanesButton)
     self.ui.createBoneCylindersFiducialListButton.connect('clicked(bool)',self.onCreateBoneCylindersFiducialListButton)
-    self.ui.createCylindersFromFiducialListAndBoneSurgicalGuideBasesButton.connect('clicked(bool)',self.onCreateCylindersFromFiducialListAndBoneSurgicalGuideBasesButton)
-    self.ui.makeBooleanOperationsToBoneSurgicalGuideBasesButton.connect('clicked(bool)',self.onMakeBooleanOperationsToBoneSurgicalGuideBasesButton)
+    self.ui.createCylindersFromFiducialListAndBoneSurgicalGuideBaseButton.connect('clicked(bool)',self.onCreateCylindersFromFiducialListAndBoneSurgicalGuideBaseButton)
+    self.ui.makeBooleanOperationsToBoneSurgicalGuideBaseButton.connect('clicked(bool)',self.onMakeBooleanOperationsToBoneSurgicalGuideBaseButton)
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
@@ -261,7 +261,7 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     self.ui.boneModelSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneModel"))
     self.ui.boneCurveSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneCurve"))
     self.ui.boneFiducialListSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneFiducialList"))
-    self.ui.boneSurgicalGuideBasesSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneSurgicalGuideBases"))
+    self.ui.boneSurgicalGuideBaseSelector.setCurrentNode(self._parameterNode.GetNodeReference("boneSurgicalGuideBaseModel"))
     
     if self._parameterNode.GetParameter("multiplierOfMaxRadius") != '':
       self.ui.multiplierOfMaxRadiusSpinBox.setValue(float(self._parameterNode.GetParameter("multiplierOfMaxRadius")))
@@ -300,7 +300,7 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
 
     self._parameterNode.SetNodeReferenceID("boneCurve", self.ui.boneCurveSelector.currentNodeID)
     self._parameterNode.SetNodeReferenceID("boneFiducialList", self.ui.boneFiducialListSelector.currentNodeID)
-    self._parameterNode.SetNodeReferenceID("boneSurgicalGuideBases", self.ui.boneSurgicalGuideBasesSelector.currentNodeID)
+    self._parameterNode.SetNodeReferenceID("boneSurgicalGuideBaseModel", self.ui.boneSurgicalGuideBaseSelector.currentNodeID)
     
     self._parameterNode.SetParameter("multiplierOfMaxRadius", str(self.ui.multiplierOfMaxRadiusSpinBox.value))
     self._parameterNode.SetParameter("securityMarginOfBonePieces", str(self.ui.securityMarginOfBonePiecesSpinBox.value))
@@ -387,11 +387,11 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
   def onCreateBoneCylindersFiducialListButton(self):
     self.logic.createBoneCylindersFiducialList()
 
-  def onCreateCylindersFromFiducialListAndBoneSurgicalGuideBasesButton(self):
-    self.logic.createCylindersFromFiducialListAndBoneSurgicalGuideBases(self)
+  def onCreateCylindersFromFiducialListAndBoneSurgicalGuideBaseButton(self):
+    self.logic.createCylindersFromFiducialListAndBoneSurgicalGuideBase()
 
-  def onMakeBooleanOperationsToBoneSurgicalGuideBasesButton(self):
-    self.logic.makeBooleanOperationsToBoneSurgicalGuideBases()
+  def onMakeBooleanOperationsToBoneSurgicalGuideBaseButton(self):
+    self.logic.makeBooleanOperationsToBoneSurgicalGuideBase()
 
 #
 # DeformityCorrectionOsteotomyPlannerLogic
@@ -622,10 +622,8 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
 
   def createAndUpdateDynamicModelerNodes(self):
     parameterNode = self.getParameterNode()
-    #useNonDecimatedBoneModelsForPreviewChecked = parameterNode.GetParameter("useNonDecimatedBoneModelsForPreview") == "True"
     boneCurve = parameterNode.GetNodeReference("boneCurve")
     nonDecimatedBoneModelNode = parameterNode.GetNodeReference("boneModel")
-    #decimatedFibulaModelNode = parameterNode.GetNodeReference("decimatedFibulaModelNode")
      
     shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
     boneCutPlanesFolder = shNode.GetItemByName("Bone Cut Planes")
@@ -1079,7 +1077,7 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
         lineEndPos = np.array([0,0,0])
         planesList[2*(i-1) +2].GetOrigin(lineStartPos)
         planesList[2*(i-1) +3].GetOrigin(lineEndPos)
-        #Create fibula axis:
+        
         planeZ = (lineEndPos - lineStartPos)/np.linalg.norm(lineEndPos - lineStartPos)
 
         duplicateBonePieceTransformNode = slicer.vtkMRMLLinearTransformNode()
@@ -1259,13 +1257,140 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     return miterBox
   
   def createBoneCylindersFiducialList(self):
-    pass
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    boneCylindersFiducialsListsFolder = shNode.GetItemByName("Bone Cylinders Fiducials Lists")
+    if not boneCylindersFiducialsListsFolder:
+      boneCylindersFiducialsListsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Bone Cylinders Fiducials Lists")
+    
+    boneFiducialListNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLMarkupsFiducialNode")
+    boneFiducialListNode.SetName("temp")
+    slicer.mrmlScene.AddNode(boneFiducialListNode)
+    slicer.modules.markups.logic().AddNewDisplayNodeForMarkupsNode(boneFiducialListNode)
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    boneFiducialListNodeItemID = shNode.GetItemByDataNode(boneFiducialListNode)
+    shNode.SetItemParent(boneFiducialListNodeItemID, boneCylindersFiducialsListsFolder)
+    boneFiducialListNode.SetName(slicer.mrmlScene.GetUniqueNameByString("boneCylindersFiducialsList"))
 
-  def createCylindersFromFiducialListAndBoneSurgicalGuideBases(self):
-    pass
+    #setup placement
+    slicer.modules.markups.logic().SetActiveListID(boneFiducialListNode)
+    interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
+    interactionNode.SwitchToPersistentPlaceMode()
 
-  def makeBooleanOperationsToBoneSurgicalGuideBases(self):
-    pass
+  def createCylindersFromFiducialListAndBoneSurgicalGuideBase(self):
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    boneCylindersModelsFolder = shNode.GetItemByName("Bone Cylinders Models")
+    shNode.RemoveItem(boneCylindersModelsFolder)
+    boneCylindersModelsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Bone Cylinders Models")
+    cylindersTransformsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Cylinders Transforms")
+    
+    parameterNode = self.getParameterNode()
+    boneFiducialList = parameterNode.GetNodeReference("boneFiducialList")
+    boneSurgicalGuideBaseModel = parameterNode.GetNodeReference("boneSurgicalGuideBaseModel")
+    boneScrewHoleCylinderRadius = float(parameterNode.GetParameter("boneScrewHoleCylinderRadius"))
+
+    normalsOfSurgicalGuideBaseModel = slicer.util.arrayFromModelPointData(boneSurgicalGuideBaseModel, 'Normals')
+    
+    surgicalGuideBaseMesh = boneSurgicalGuideBaseModel.GetMesh()
+
+    for i in range(boneFiducialList.GetNumberOfFiducials()):
+      pos = [0,0,0]
+      boneFiducialList.GetNthFiducialPosition(i,pos)
+
+      pointID = surgicalGuideBaseMesh.FindPoint(pos)
+
+      normalAtPointID = normalsOfSurgicalGuideBaseModel[pointID]
+
+      transformedCylinderAxisX = [0,0,0]
+      transformedCylinderAxisY = [0,0,0]
+      transformedCylinderAxisZ = normalAtPointID
+      vtk.vtkMath.Perpendiculars(transformedCylinderAxisZ,transformedCylinderAxisX,transformedCylinderAxisY,0)
+
+      cylinderModel = self.createCylinder(boneScrewHoleCylinderRadius, "cylinder%d" % i)
+      cylinderModelItemID = shNode.GetItemByDataNode(cylinderModel)
+      shNode.SetItemParent(cylinderModelItemID, boneCylindersModelsFolder)
+      
+      cylinderAxisX = [1,0,0]
+      cylinderAxisY = [0,1,0]
+      cylinderAxisZ = [0,0,1]
+
+      cylinderAxisToWorldRotationMatrix = self.getAxes1ToWorldRotationMatrix(cylinderAxisX, cylinderAxisY, cylinderAxisZ)
+      transformedCylinderAxisToWorldRotationMatrix = self.getAxes1ToWorldRotationMatrix(transformedCylinderAxisX, transformedCylinderAxisY, transformedCylinderAxisZ)
+
+      cylinderAxisToTransformedCylinderAxisRotationMatrix = self.getAxes1ToAxes2RotationMatrix(cylinderAxisToWorldRotationMatrix, transformedCylinderAxisToWorldRotationMatrix)
+
+      transformNode = slicer.vtkMRMLLinearTransformNode()
+      transformNode.SetName("temp%d" % i)
+      slicer.mrmlScene.AddNode(transformNode)
+
+      finalTransform = vtk.vtkTransform()
+      finalTransform.PostMultiply()
+      finalTransform.Concatenate(cylinderAxisToTransformedCylinderAxisRotationMatrix)
+      finalTransform.Translate(pos)
+
+      transformNode.SetMatrixTransformToParent(finalTransform.GetMatrix())
+
+      transformNode.UpdateScene(slicer.mrmlScene)
+
+      cylinderModel.SetAndObserveTransformNodeID(transformNode.GetID())
+      cylinderModel.HardenTransform()
+      
+      transformNodeItemID = shNode.GetItemByDataNode(transformNode)
+      shNode.SetItemParent(transformNodeItemID, cylindersTransformsFolder)
+    
+    shNode.RemoveItem(cylindersTransformsFolder)
+
+  def createCylinder(self,R,name):
+    cylinder = slicer.mrmlScene.CreateNodeByClass('vtkMRMLModelNode')
+    cylinder.SetName(slicer.mrmlScene.GetUniqueNameByString(name))
+    slicer.mrmlScene.AddNode(cylinder)
+    cylinder.CreateDefaultDisplayNodes()
+    lineSource = vtk.vtkLineSource()
+    lineSource.SetPoint1(0, 0, 25)
+    lineSource.SetPoint2(0, 0, -25)
+    tubeFilter = vtk.vtkTubeFilter()
+    tubeFilter.SetInputConnection(lineSource.GetOutputPort())
+    tubeFilter.SetRadius(R)
+    tubeFilter.SetNumberOfSides(50)
+    tubeFilter.CappingOn()
+    tubeFilter.Update()
+    cylinder.SetAndObservePolyData(tubeFilter.GetOutput())
+    return cylinder
+  
+  def makeBooleanOperationsToBoneSurgicalGuideBase(self):
+    parameterNode = self.getParameterNode()
+    boneSurgicalGuideBaseModel = parameterNode.GetNodeReference("boneSurgicalGuideBaseModel")
+
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    boneCylindersModelsFolder = shNode.GetItemByName("Bone Cylinders Models")
+    cylindersModelsList = createListFromFolderID(boneCylindersModelsFolder)
+    miterBoxesModelsFolder = shNode.GetItemByName("miterBoxes Models")
+    miterBoxesModelsList = createListFromFolderID(miterBoxesModelsFolder)
+    biggerMiterBoxesModelsFolder = shNode.GetItemByName("biggerMiterBoxes Models")
+    biggerMiterBoxesModelsList = createListFromFolderID(biggerMiterBoxesModelsFolder)
+
+    combineModelsLogic = slicer.modules.combinemodels.widgetRepresentation().self().logic
+
+    surgicalGuideModel = slicer.modules.models.logic().AddModel(boneSurgicalGuideBaseModel.GetPolyData())
+    surgicalGuideModel.SetName(slicer.mrmlScene.GetUniqueNameByString('BoneSurgicalGuidePrototype'))
+    surgicalGuideModelItemID = shNode.GetItemByDataNode(surgicalGuideModel)
+    shNode.SetItemParent(surgicalGuideModelItemID, self.getParentFolderItemID())
+
+    displayNode = surgicalGuideModel.GetDisplayNode()
+    deformedBoneViewNode = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
+    displayNode.AddViewNodeID(deformedBoneViewNode.GetID())
+
+    for i in range(len(biggerMiterBoxesModelsList)):
+      combineModelsLogic.process(surgicalGuideModel, biggerMiterBoxesModelsList[i], surgicalGuideModel, 'union')
+
+    for i in range(len(cylindersModelsList)):
+      combineModelsLogic.process(surgicalGuideModel, cylindersModelsList[i], surgicalGuideModel, 'difference')
+
+    for i in range(len(miterBoxesModelsList)):
+      combineModelsLogic.process(surgicalGuideModel, miterBoxesModelsList[i], surgicalGuideModel, 'difference')
+
+    if surgicalGuideModel.GetPolyData().GetNumberOfPoints() == 0:
+      slicer.mrmlScene.RemoveNode(surgicalGuideModel)
+      slicer.util.errorDisplay("ERROR: Boolean operations to make bone surgical guide failed")
   
 #
 # DeformityCorrectionOsteotomyPlannerTest
