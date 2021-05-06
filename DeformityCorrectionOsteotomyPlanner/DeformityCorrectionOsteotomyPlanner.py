@@ -139,6 +139,7 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     self.ui.normalAsTangentOfCurveCheckBox.connect('stateChanged(int)', self.updateParameterNodeFromGUI)
     self.ui.originToCurveCheckBox.connect('stateChanged(int)', self.onOriginToCurveCheckBox)
     self.ui.originToCenterCheckBox.connect('stateChanged(int)', self.onOriginToCenterCheckBox)
+    self.ui.checkSecurityMarginOnMiterBoxCreationCheckBox.connect('stateChanged(int)', self.updateParameterNodeFromGUI)
 
     self.ui.multiplierOfMaxRadiusSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
     self.ui.miterBoxSlotWidthSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
@@ -147,6 +148,7 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     self.ui.miterBoxSlotWallSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
     self.ui.biggerMiterBoxDistanceToBoneSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
     self.ui.boneScrewHoleCylinderRadiusSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
+    self.ui.securityMarginOfBonePiecesSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
     #self.ui.clearanceFitPrintingToleranceSpinBox.valueChanged.connect(self.updateParameterNodeFromGUI)
 
     # Buttons#
@@ -263,6 +265,8 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     
     if self._parameterNode.GetParameter("multiplierOfMaxRadius") != '':
       self.ui.multiplierOfMaxRadiusSpinBox.setValue(float(self._parameterNode.GetParameter("multiplierOfMaxRadius")))
+    if self._parameterNode.GetParameter("securityMarginOfBonePieces") != '':
+      self.ui.securityMarginOfBonePiecesSpinBox.setValue(float(self._parameterNode.GetParameter("securityMarginOfBonePieces")))
     if self._parameterNode.GetParameter("miterBoxSlotWidth") != '':
       self.ui.miterBoxSlotWidthSpinBox.setValue(float(self._parameterNode.GetParameter("miterBoxSlotWidth")))
     if self._parameterNode.GetParameter("miterBoxSlotLength") != '':
@@ -278,6 +282,7 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     
     self.ui.normalAsTangentOfCurveCheckBox.checked = self._parameterNode.GetParameter("normalAsTangentOfCurve") == "True"
     self.ui.originToCurveCheckBox.checked = self._parameterNode.GetParameter("originToCurve") == "True"
+    self.ui.checkSecurityMarginOnMiterBoxCreationCheckBox.checked = self._parameterNode.GetParameter("checkSecurityMarginOnMiterBoxCreation") != "False"
 
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
@@ -298,6 +303,7 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
     self._parameterNode.SetNodeReferenceID("boneSurgicalGuideBases", self.ui.boneSurgicalGuideBasesSelector.currentNodeID)
     
     self._parameterNode.SetParameter("multiplierOfMaxRadius", str(self.ui.multiplierOfMaxRadiusSpinBox.value))
+    self._parameterNode.SetParameter("securityMarginOfBonePieces", str(self.ui.securityMarginOfBonePiecesSpinBox.value))
     self._parameterNode.SetParameter("miterBoxSlotWidth", str(self.ui.miterBoxSlotWidthSpinBox.value))
     self._parameterNode.SetParameter("miterBoxSlotLength", str(self.ui.miterBoxSlotLengthSpinBox.value))
     self._parameterNode.SetParameter("miterBoxSlotHeight", str(self.ui.miterBoxSlotHeightSpinBox.value))
@@ -309,6 +315,10 @@ class DeformityCorrectionOsteotomyPlannerWidget(ScriptedLoadableModuleWidget, VT
       self._parameterNode.SetParameter("normalAsTangentOfCurve","True")
     else:
       self._parameterNode.SetParameter("normalAsTangentOfCurve","False")
+    if self.ui.checkSecurityMarginOnMiterBoxCreationCheckBox.checked:
+      self._parameterNode.SetParameter("checkSecurityMarginOnMiterBoxCreation","True")
+    else:
+      self._parameterNode.SetParameter("checkSecurityMarginOnMiterBoxCreation","False")
 
     self._parameterNode.EndModify(wasModified)
 
@@ -861,6 +871,25 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
 
     self.centerBoneCutPlanes()
 
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    boneCutPlanesFolder = shNode.GetItemByName("Bone Cut Planes")
+    boneCutPlanesList = createListFromFolderID(boneCutPlanesFolder)
+
+    self.createAligmentPlanes()
+
+    aligmentPlanesFolder = shNode.GetItemByName("Aligment Planes")
+    aligmentPlanesList = createListFromFolderID(aligmentPlanesFolder)
+
+    listOfPlanesToUpdate = [aligmentPlanesList[0]] + boneCutPlanesList + [aligmentPlanesList[1]]
+
+    self.removeBoneCutPlanesObservers()
+    self.automaticNormalAndOriginDefinitionOfPlanes(listOfPlanesToUpdate)
+    self.addBoneCutPlanesObservers()
+
+    self.createAndUpdateDynamicModelerNodes()
+    self.transformBonePiecesToCorrectedPosition()
+
+  def createAligmentPlanes(self):
     parameterNode = self.getParameterNode()
     boneModel = parameterNode.GetNodeReference("boneModel")
     multiplierOfMaxRadius = float(parameterNode.GetParameter("multiplierOfMaxRadius"))
@@ -923,15 +952,6 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     lastBoneCutPlaneZ = np.array(lastBoneCutPlaneZ)
     endAligmentPlane.SetOrigin(lastBoneCutPlaneOrigin+lastBoneCutPlaneZ*multiplierOfMaxRadius*maxRadiusOfIntersection)
     self.setOriginOfPlaneToCentroidOfIntersectionWithModel(boneModel,endAligmentPlane)
-
-    listOfPlanesToUpdate = [startAligmentPlane] + boneCutPlanesList + [endAligmentPlane]
-
-    self.removeBoneCutPlanesObservers()
-    self.automaticNormalAndOriginDefinitionOfPlanes(listOfPlanesToUpdate)
-    self.addBoneCutPlanesObservers()
-
-    self.createAndUpdateDynamicModelerNodes()
-    self.transformBonePiecesToCorrectedPosition()
 
   def automaticNormalAndOriginDefinitionOfPlanes(self,planeList):
     parameterNode = self.getParameterNode()
@@ -1014,9 +1034,231 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
 
     return maxRadiusOfIntersection
 
-  def onCreateMiterBoxesFromBoneCutPlanes(self):
-    pass
+  def createMiterBoxesFromBoneCutPlanes(self):
+    parameterNode = self.getParameterNode()
+    #fibulaLine = parameterNode.GetNodeReference("fibulaLine")
+    miterBoxDirectionLine = parameterNode.GetNodeReference("miterBoxDirectionLine")
+    miterBoxSlotWidth = float(parameterNode.GetParameter("miterBoxSlotWidth"))
+    miterBoxSlotLength = float(parameterNode.GetParameter("miterBoxSlotLength"))
+    miterBoxSlotHeight = float(parameterNode.GetParameter("miterBoxSlotHeight"))
+    miterBoxSlotWall = float(parameterNode.GetParameter("miterBoxSlotWall"))
+    biggerMiterBoxDistanceToBone = float(parameterNode.GetParameter("biggerMiterBoxDistanceToBone"))
+    securityMarginOfBonePieces = float(parameterNode.GetParameter("securityMarginOfBonePieces"))
+    checkSecurityMarginOnMiterBoxCreationChecked = parameterNode.GetParameter("checkSecurityMarginOnMiterBoxCreation") == "True"
+    boneModel = parameterNode.GetNodeReference("boneModel")
 
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    miterBoxesModelsFolder = shNode.GetItemByName("miterBoxes Models")
+    shNode.RemoveItem(miterBoxesModelsFolder)
+    biggerMiterBoxesModelsFolder = shNode.GetItemByName("biggerMiterBoxes Models")
+    shNode.RemoveItem(biggerMiterBoxesModelsFolder)
+
+    boneCutPlanesFolder = shNode.GetItemByName("Bone Cut Planes")
+    boneCutPlanesList = createListFromFolderID(boneCutPlanesFolder)
+
+    if checkSecurityMarginOnMiterBoxCreationChecked:
+      aligmentPlanesFolder = shNode.GetItemByName("Aligment Planes")
+      aligmentPlanesList = createListFromFolderID(aligmentPlanesFolder)
+      cutBonesPiecesList = createListFromFolderID(shNode.GetItemByName("Cut Bone Pieces"))
+      duplicateBonePiecesModelsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Duplicate Bone Pieces")
+      duplicateBonePiecesTransformsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Duplicate Bone Pieces Transforms")
+      
+      for i in range(0,len(cutBonesPiecesList)):
+        duplicateBonePiece = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Duplicate ' + cutBonesPiecesList[i].GetName())
+        duplicateBonePiece.CreateDefaultDisplayNodes()
+        duplicateBonePiece.CopyContent(cutBonesPiecesList[i])
+
+        duplicateBonePieceItemID = shNode.GetItemByDataNode(duplicateBonePiece)
+        shNode.SetItemParent(duplicateBonePieceItemID, duplicateBonePiecesModelsFolder)
+
+      duplicateFibulaBonePiecesList = createListFromFolderID(duplicateBonePiecesModelsFolder)
+
+      planesList = [aligmentPlanesList[0]] + boneCutPlanesList + [aligmentPlanesList[1]]
+
+      for i in range(1,len(duplicateFibulaBonePiecesList)):
+        lineStartPos = np.array([0,0,0])
+        lineEndPos = np.array([0,0,0])
+        planesList[2*(i-1) +2].GetOrigin(lineStartPos)
+        planesList[2*(i-1) +3].GetOrigin(lineEndPos)
+        #Create fibula axis:
+        planeZ = (lineEndPos - lineStartPos)/np.linalg.norm(lineEndPos - lineStartPos)
+
+        duplicateBonePieceTransformNode = slicer.vtkMRMLLinearTransformNode()
+        duplicateBonePieceTransformNode.SetName("Duplicate Bone Piece Transform {0}".format(i))
+        slicer.mrmlScene.AddNode(duplicateBonePieceTransformNode)
+
+        duplicateBonePieceTransform = vtk.vtkTransform()
+        duplicateBonePieceTransform.PostMultiply()
+        duplicateBonePieceTransform.Translate(-i*(securityMarginOfBonePieces + 1e-2)*planeZ)
+
+        duplicateBonePieceTransformNode.SetMatrixTransformToParent(duplicateBonePieceTransform.GetMatrix())
+
+        duplicateFibulaBonePiecesList[i].SetAndObserveTransformNodeID(duplicateBonePieceTransformNode.GetID())
+        duplicateFibulaBonePiecesList[i].HardenTransform()
+
+        duplicateBonePieceTransformNodeItemID = shNode.GetItemByDataNode(duplicateBonePieceTransformNode)
+        shNode.SetItemParent(duplicateBonePieceTransformNodeItemID, duplicateBonePiecesTransformsFolder)
+
+      collisionDetected = False
+      
+      import vtkSlicerRtCommonPython
+      for i in range(0,len(duplicateFibulaBonePiecesList) -1):
+        collisionDetection = vtkSlicerRtCommonPython.vtkCollisionDetectionFilter()
+        #collisionDetection = vtk.vtkCollisionDetectionFilter()
+        collisionDetection.SetInputData(0, duplicateFibulaBonePiecesList[i].GetPolyData())
+        collisionDetection.SetInputData(1, duplicateFibulaBonePiecesList[i+1].GetPolyData())
+        matrix1 = vtk.vtkMatrix4x4()
+        collisionDetection.SetMatrix(0, matrix1)
+        collisionDetection.SetMatrix(1, matrix1)
+        collisionDetection.SetBoxTolerance(0.0)
+        collisionDetection.SetCellTolerance(0.0)
+        collisionDetection.SetNumberOfCellsPerNode(2)
+        collisionDetection.Update()
+        
+        if collisionDetection.GetNumberOfContacts() > 0:
+          collisionDetected = True
+          break
+      
+      shNode.RemoveItem(duplicateBonePiecesTransformsFolder)
+      shNode.RemoveItem(duplicateBonePiecesModelsFolder)
+      if collisionDetected:
+        slicer.util.errorDisplay(f"The distance in between bone cut planes do not satisfy the security margin of {securityMarginOfBonePieces}mm. " +
+            "You can fix this by increasing the distance between each pair of bone cut planes that perform the corresponding osteotomy")
+        return
+
+    miterBoxesModelsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"miterBoxes Models")
+    biggerMiterBoxesModelsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"biggerMiterBoxes Models")
+    miterBoxesTransformsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"miterBoxes Transforms")
+    intersectionsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Intersections")
+    pointsIntersectionsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Points Intersections")
+    
+    deformedBoneViewNode = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
+
+    for i in range(len(boneCutPlanesList)):
+      boneCutPlaneMatrix = vtk.vtkMatrix4x4()
+      boneCutPlanesList[i].GetPlaneToWorldMatrix(boneCutPlaneMatrix)
+      boneCutPlaneX = np.array([boneCutPlaneMatrix.GetElement(0,0),boneCutPlaneMatrix.GetElement(1,0),boneCutPlaneMatrix.GetElement(2,0)])
+      boneCutPlaneY = np.array([boneCutPlaneMatrix.GetElement(0,1),boneCutPlaneMatrix.GetElement(1,1),boneCutPlaneMatrix.GetElement(2,1)])
+      boneCutPlaneZ = np.array([boneCutPlaneMatrix.GetElement(0,2),boneCutPlaneMatrix.GetElement(1,2),boneCutPlaneMatrix.GetElement(2,2)])
+      boneCutPlaneOrigin = np.array([boneCutPlaneMatrix.GetElement(0,3),boneCutPlaneMatrix.GetElement(1,3),boneCutPlaneMatrix.GetElement(2,3)])
+    
+      #miterBoxModel: the numbers are selected arbitrarily to make a box with the correct size then they'll be GUI set
+      miterBoxName = "miterBox%d" % (i)
+      biggerMiterBoxName = "biggerMiterBox%d" % (i)
+      miterBoxWidth = miterBoxSlotWidth
+      miterBoxLength = miterBoxSlotLength
+      miterBoxHeight = 70
+      miterBoxModel = self.createBox(miterBoxLength,miterBoxHeight,miterBoxWidth,miterBoxName)
+
+      miterBoxDisplayNode = miterBoxModel.GetDisplayNode()
+      miterBoxDisplayNode.AddViewNodeID(deformedBoneViewNode.GetID())
+
+      miterBoxModelItemID = shNode.GetItemByDataNode(miterBoxModel)
+      shNode.SetItemParent(miterBoxModelItemID, miterBoxesModelsFolder)
+
+      biggerMiterBoxWidth = miterBoxSlotWidth+2*miterBoxSlotWall
+      biggerMiterBoxLength = miterBoxSlotLength+2*miterBoxSlotWall
+      biggerMiterBoxHeight = miterBoxSlotHeight
+      biggerMiterBoxModel = self.createBox(biggerMiterBoxLength,biggerMiterBoxHeight,biggerMiterBoxWidth,biggerMiterBoxName)
+      
+      biggerMiterBoxDisplayNode = biggerMiterBoxModel.GetDisplayNode()
+      biggerMiterBoxDisplayNode.AddViewNodeID(deformedBoneViewNode.GetID())
+
+      biggerMiterBoxModelItemID = shNode.GetItemByDataNode(biggerMiterBoxModel)
+      shNode.SetItemParent(biggerMiterBoxModelItemID, biggerMiterBoxesModelsFolder)
+
+      miterBoxDirection = boneCutPlaneX
+
+      normalToMiterBoxDirectionAndPlaneZ = [0,0,0]
+      vtk.vtkMath.Cross(miterBoxDirection, boneCutPlaneZ, normalToMiterBoxDirectionAndPlaneZ)
+      normalToMiterBoxDirectionAndPlaneZ = normalToMiterBoxDirectionAndPlaneZ/np.linalg.norm(normalToMiterBoxDirectionAndPlaneZ)
+      
+      intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection%d' % (i))
+      intersectionModel.CreateDefaultDisplayNodes()
+      self.getIntersectionBetweenModelAnd1Plane(boneModel,boneCutPlanesList[i],intersectionModel)
+      intersectionModelCentroid = self.getCentroid(intersectionModel)
+      pointsIntersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Points Intersection%d' % (i))
+      pointsIntersectionModel.CreateDefaultDisplayNodes()
+      self.getIntersectionBetweenModelAnd1PlaneWithNormalAndOrigin_2(intersectionModel,normalToMiterBoxDirectionAndPlaneZ,intersectionModelCentroid,pointsIntersectionModel)
+      pointOfIntersection = self.getPointOfATwoPointsModelThatMakesLineDirectionSimilarToVector(pointsIntersectionModel,boneCutPlaneX)
+      intersectionModelItemID = shNode.GetItemByDataNode(intersectionModel)
+      shNode.SetItemParent(intersectionModelItemID, intersectionsFolder)
+      pointsIntersectionModelItemID = shNode.GetItemByDataNode(pointsIntersectionModel)
+      shNode.SetItemParent(pointsIntersectionModelItemID, pointsIntersectionsFolder)
+
+      miterBoxAxisX = [0,0,0]
+      miterBoxAxisY =  [0,0,0]
+      miterBoxAxisZ = boneCutPlaneZ
+      vtk.vtkMath.Cross(miterBoxDirection, miterBoxAxisZ, miterBoxAxisX)
+      miterBoxAxisX = miterBoxAxisX/np.linalg.norm(miterBoxAxisX)
+      vtk.vtkMath.Cross(miterBoxAxisZ, miterBoxAxisX, miterBoxAxisY)
+      miterBoxAxisY = miterBoxAxisY/np.linalg.norm(miterBoxAxisY)
+
+      miterBoxAxisToWorldRotationMatrix = self.getAxes1ToWorldRotationMatrix(miterBoxAxisX, miterBoxAxisY, miterBoxAxisZ)
+      WorldToWorldRotationMatrix = self.getAxes1ToWorldRotationMatrix([1,0,0], [0,1,0], [0,0,1])
+
+      WorldToMiterBoxAxisRotationMatrix = self.getAxes1ToAxes2RotationMatrix(WorldToWorldRotationMatrix, miterBoxAxisToWorldRotationMatrix)
+
+      transformNode = slicer.vtkMRMLLinearTransformNode()
+      transformNode.SetName("temp%d" % i)
+      slicer.mrmlScene.AddNode(transformNode)
+
+      finalTransform = vtk.vtkTransform()
+      finalTransform.PostMultiply()
+      finalTransform.Concatenate(WorldToMiterBoxAxisRotationMatrix)
+      if i%2 == 0:
+        miterBoxAxisXTranslation = 0
+        miterBoxAxisYTranslation = biggerMiterBoxHeight/2+biggerMiterBoxDistanceToBone
+        miterBoxAxisZTranslation = -miterBoxSlotWidth/2
+      else:
+        miterBoxAxisXTranslation = 0
+        miterBoxAxisYTranslation = biggerMiterBoxHeight/2+biggerMiterBoxDistanceToBone
+        miterBoxAxisZTranslation = miterBoxSlotWidth/2
+      finalTransform.Translate(pointOfIntersection + miterBoxAxisX*miterBoxAxisXTranslation + miterBoxAxisY*miterBoxAxisYTranslation + miterBoxAxisZ*miterBoxAxisZTranslation)
+      transformNode.SetMatrixTransformToParent(finalTransform.GetMatrix())
+
+      transformNode.UpdateScene(slicer.mrmlScene)
+
+      miterBoxModel.SetAndObserveTransformNodeID(transformNode.GetID())
+      miterBoxModel.HardenTransform()
+      biggerMiterBoxModel.SetAndObserveTransformNodeID(transformNode.GetID())
+      biggerMiterBoxModel.HardenTransform()
+      
+      transformNodeItemID = shNode.GetItemByDataNode(transformNode)
+      shNode.SetItemParent(transformNodeItemID, miterBoxesTransformsFolder)
+    
+    shNode.RemoveItem(miterBoxesTransformsFolder)
+    shNode.RemoveItem(intersectionsFolder)
+    shNode.RemoveItem(pointsIntersectionsFolder)
+
+  def getPointOfATwoPointsModelThatMakesLineDirectionSimilarToVector(self,twoPointsModel,vector):
+    pointsData = twoPointsModel.GetPolyData().GetPoints().GetData()
+    from vtk.util.numpy_support import vtk_to_numpy
+
+    points = vtk_to_numpy(pointsData)
+
+    pointsVector = (points[1]-points[0])/np.linalg.norm(points[1]-points[0])
+
+    if vtk.vtkMath.Dot(pointsVector, vector) > 0:
+      return points[1]
+    else:
+      return points[0]
+  
+  def createBox(self, X, Y, Z, name):
+    miterBox = slicer.mrmlScene.CreateNodeByClass('vtkMRMLModelNode')
+    miterBox.SetName(slicer.mrmlScene.GetUniqueNameByString(name))
+    slicer.mrmlScene.AddNode(miterBox)
+    miterBox.CreateDefaultDisplayNodes()
+    miterBoxSource = vtk.vtkCubeSource()
+    miterBoxSource.SetXLength(X)
+    miterBoxSource.SetYLength(Y)
+    miterBoxSource.SetZLength(Z)
+    triangleFilter = vtk.vtkTriangleFilter()
+    triangleFilter.SetInputConnection(miterBoxSource.GetOutputPort())
+    triangleFilter.Update()
+    miterBox.SetAndObservePolyData(triangleFilter.GetOutput())
+    return miterBox
+  
   def onCreateBoneCylindersFiducialList(self):
     pass
 
