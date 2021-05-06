@@ -563,6 +563,10 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     self.planeModifiedTimer.start()
 
   def onPlaneModifiedTimerTimeout(self):
+    if not self.boneCutPlanesNumberIsEven():
+      slicer.util.errorDisplay("ERROR: Bone cut planes number is odd, it should be even.")
+      return
+
     parameterNode = self.getParameterNode()
     boneCurve = parameterNode.GetNodeReference("boneCurve")
     boneModel = parameterNode.GetNodeReference("boneModel")
@@ -598,6 +602,13 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
 
     self.createAndUpdateDynamicModelerNodes()
     self.transformBonePiecesToCorrectedPosition()
+
+  def boneCutPlanesNumberIsEven(self):
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    boneCutPlanesFolder = shNode.GetItemByName("Bone Cut Planes")
+    boneCutPlanesList = createListFromFolderID(boneCutPlanesFolder)
+
+    return (len(boneCutPlanesList)%2) == 0
 
   def createAndUpdateDynamicModelerNodes(self):
     parameterNode = self.getParameterNode()
@@ -844,6 +855,10 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     self.boneCutPlaneObserversAndNodeIDList = []  
 
   def automaticNormalAndOriginDefinitionOfBoneCutPlanes(self):
+    if not self.boneCutPlanesNumberIsEven():
+      slicer.util.errorDisplay("ERROR: Bone cut planes number is odd, it should be even.")
+      return
+
     self.centerBoneCutPlanes()
 
     parameterNode = self.getParameterNode()
