@@ -831,12 +831,8 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
 
     for i in range(len(boneCutPlanesList)):
       planeNode = boneCutPlanesList[i]
-      intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection')
-      intersectionModel.CreateDefaultDisplayNodes()
-      self.getIntersectionBetweenModelAnd1Plane(boneModel,planeNode,intersectionModel)
-      intersectionModelCentroid = self.getCentroid(intersectionModel)
-      slicer.mrmlScene.RemoveNode(intersectionModel)
-      planeNode.SetOrigin(intersectionModelCentroid)
+      intersectionCentroid = self.getCentroidOfIntersectionOfModelWithPlane(boneModel,planeNode)
+      planeNode.SetOrigin(intersectionCentroid)
 
     self.addBoneCutPlanesObservers()
 
@@ -913,6 +909,15 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     deformedBoneViewNode = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
     displayNode.AddViewNodeID(deformedBoneViewNode.GetID())
 
+    #set color of planes
+    aux = slicer.mrmlScene.GetNodeByID('vtkMRMLColorTableNodeFileMediumChartColors.txt')
+    colorTable = aux.GetLookupTable()
+    ind = 2# Just select a color that is unused
+    colorwithalpha = colorTable.GetTableValue(ind)
+    color = [colorwithalpha[0],colorwithalpha[1],colorwithalpha[2]]
+
+    displayNode.SetSelectedColor(color)
+
     startAligmentPlane.CopyContent(boneCutPlanesList[0])
 
     maxRadiusOfIntersection = self.getMaxRadiusOfIntersectionOfModelAndPlane(boneModel,startAligmentPlane)
@@ -938,6 +943,8 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     displayNode = endAligmentPlane.GetDisplayNode()
     deformedBoneViewNode = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
     displayNode.AddViewNodeID(deformedBoneViewNode.GetID())
+
+    displayNode.SetSelectedColor(color)
 
     endAligmentPlane.CopyContent(boneCutPlanesList[-1])
 
@@ -1055,6 +1062,9 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
 
     if checkSecurityMarginOnMiterBoxCreationChecked:
       aligmentPlanesFolder = shNode.GetItemByName("Aligment Planes")
+      if not aligmentPlanesFolder:
+        self.createAligmentPlanes()
+        aligmentPlanesFolder = shNode.GetItemByName("Aligment Planes")
       aligmentPlanesList = createListFromFolderID(aligmentPlanesFolder)
       cutBonesPiecesList = createListFromFolderID(shNode.GetItemByName("Cut Bone Pieces"))
       duplicateBonePiecesModelsFolder = shNode.CreateFolderItem(self.getParentFolderItemID(),"Duplicate Bone Pieces")
@@ -1073,12 +1083,10 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
       planesList = [aligmentPlanesList[0]] + boneCutPlanesList + [aligmentPlanesList[1]]
 
       for i in range(1,len(duplicateBonePiecesList)):
-        lineStartPos = np.array([0,0,0])
-        lineEndPos = np.array([0,0,0])
-        planesList[2*(i-1) +2].GetOrigin(lineStartPos)
-        planesList[2*(i-1) +3].GetOrigin(lineEndPos)
+        lineStartPos = self.getCentroidOfIntersectionOfModelWithPlane(boneModel,planesList[2*(i-1) +2])
+        lineEndPos = self.getCentroidOfIntersectionOfModelWithPlane(boneModel,planesList[2*(i-1) +3])
         
-        planeZ = (lineEndPos - lineStartPos)/np.linalg.norm(lineEndPos - lineStartPos)
+        bonePieceAnatomicalAxis = (lineEndPos - lineStartPos)/np.linalg.norm(lineEndPos - lineStartPos)
 
         duplicateBonePieceTransformNode = slicer.vtkMRMLLinearTransformNode()
         duplicateBonePieceTransformNode.SetName("Duplicate Bone Piece Transform {0}".format(i))
@@ -1086,7 +1094,7 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
 
         duplicateBonePieceTransform = vtk.vtkTransform()
         duplicateBonePieceTransform.PostMultiply()
-        duplicateBonePieceTransform.Translate(-i*(securityMarginOfBonePieces + 1e-2)*planeZ)
+        duplicateBonePieceTransform.Translate(-i*(securityMarginOfBonePieces + 1e-2)*bonePieceAnatomicalAxis)
 
         duplicateBonePieceTransformNode.SetMatrixTransformToParent(duplicateBonePieceTransform.GetMatrix())
 
@@ -1227,6 +1235,14 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
     shNode.RemoveItem(miterBoxesTransformsFolder)
     shNode.RemoveItem(intersectionsFolder)
     shNode.RemoveItem(pointsIntersectionsFolder)
+
+  def  getCentroidOfIntersectionOfModelWithPlane(self,model,plane):
+    intersectionModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode','Intersection')
+    intersectionModel.CreateDefaultDisplayNodes()
+    self.getIntersectionBetweenModelAnd1Plane(model,plane,intersectionModel)
+    intersectionModelCentroid = self.getCentroid(intersectionModel)
+    slicer.mrmlScene.RemoveNode(intersectionModel)
+    return intersectionModelCentroid
 
   def getPointOfATwoPointsModelThatMakesLineDirectionSimilarToVector(self,twoPointsModel,vector):
     pointsData = twoPointsModel.GetPolyData().GetPoints().GetData()
