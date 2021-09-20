@@ -1214,11 +1214,11 @@ class DeformityCorrectionOsteotomyPlannerLogic(ScriptedLoadableModuleLogic):
       if i%2 == 0:
         miterBoxAxisXTranslation = 0
         miterBoxAxisYTranslation = biggerMiterBoxHeight/2+biggerMiterBoxDistanceToBone
-        miterBoxAxisZTranslation = -miterBoxSlotWidth/2
+        miterBoxAxisZTranslation = miterBoxSlotWidth/2
       else:
         miterBoxAxisXTranslation = 0
         miterBoxAxisYTranslation = biggerMiterBoxHeight/2+biggerMiterBoxDistanceToBone
-        miterBoxAxisZTranslation = miterBoxSlotWidth/2
+        miterBoxAxisZTranslation = -miterBoxSlotWidth/2
       finalTransform.Translate(pointOfIntersection + miterBoxAxisX*miterBoxAxisXTranslation + miterBoxAxisY*miterBoxAxisYTranslation + miterBoxAxisZ*miterBoxAxisZTranslation)
       transformNode.SetMatrixTransformToParent(finalTransform.GetMatrix())
 
